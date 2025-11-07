@@ -1,0 +1,91 @@
+echo # Miscellaneous > .gitignore
+echo *.class >> .gitignore
+echo *.log >> .gitignore
+echo *.pyc >> .gitignore
+echo *.swp >> .gitignore
+echo .DS_Store >> .gitignore
+echo .atom/ >> .gitignore
+echo .buildlog/ >> .gitignore
+echo .history >> .gitignore
+echo .svn/ >> .gitignore
+echo migrate_working_dir/ >> .gitignore
+
+echo # IntelliJ related >> .gitignore
+echo *.iml >> .gitignore
+echo *.ipr >> .gitignore
+echo *.iws >> .gitignore
+echo .idea/ >> .gitignore
+
+echo # Visual Studio Code related >> .gitignore
+echo .vscode/ >> .gitignore
+
+echo # Flutter/Dart/Pub related >> .gitignore
+echo **/doc/api/ >> .gitignore
+echo **/ios/Flutter/.last_build_id >> .gitignore
+echo .dart_tool/ >> .gitignore
+echo .flutter-plugins >> .gitignore
+echo .flutter-plugins-dependencies >> .gitignore
+echo .packages >> .gitignore
+echo .pub-cache/ >> .gitignore
+echo .pub/ >> .gitignore
+echo /build/ >> .gitignore
+
+echo # Android related >> .gitignore
+echo **/android/**/gradle-wrapper.jar >> .gitignore
+echo **/android/.gradle >> .gitignore
+echo **/android/captures/ >> .gitignore
+echo **/android/gradlew >> .gitignore
+echo **/android/gradlew.bat >> .gitignore
+echo **/android/local.properties >> .gitignore
+echo **/android/**/GeneratedPluginRegistrant.java >> .gitignore
+echo **/android/key.properties >> .gitignore
+echo *.jks >> .gitignore
+
+echo # iOS/XCode related >> .gitignore
+echo **/ios/**/*.mode1v3 >> .gitignore
+echo **/ios/**/*.mode2v3 >> .gitignore
+echo **/ios/**/*.moved-aside >> .gitignore
+echo **/ios/**/*.pbxuser >> .gitignore
+echo **/ios/**/*.perspectivev3 >> .gitignore
+echo **/ios/**/*sync/ >> .gitignore
+echo **/ios/**/.sconsign.dblite >> .gitignore
+echo **/ios/**/.tags* >> .gitignore
+echo **/ios/**/.vagrant/ >> .gitignore
+echo **/ios/**/DerivedData/ >> .gitignore
+echo **/ios/**/Icon? >> .gitignore
+echo **/ios/**/Pods/ >> .gitignore
+echo **/ios/**/.symlinks/ >> .gitignore
+echo **/ios/**/profile >> .gitignore
+echo **/ios/**/xcuserdata >> .gitignore
+echo **/ios/.generated/ >> .gitignore
+echo **/ios/Flutter/App.framework >> .gitignore
+echo **/ios/Flutter/Flutter.framework >> .gitignore
+echo **/ios/Flutter/Flutter.podspec >> .gitignore
+echo **/ios/Flutter/Generated.xcconfig >> .gitignore
+echo **/ios/Flutter/ephemeral/ >> .gitignore
+echo **/ios/Flutter/app.flx >> .gitignore
+echo **/ios/Flutter/app.zip >> .gitignore
+echo **/ios/Flutter/flutter_assets/ >> .gitignore
+echo **/ios/Flutter/flutter_export_environment.sh >> .gitignore
+echo **/ios/ServiceDefinitions.json >> .gitignore
+echo **/ios/Runner/GeneratedPluginRegistrant.* >> .gitignore
+
+echo # Web related >> .gitignore
+echo lib/generated_plugin_registrant.dart >> .gitignore
+
+echo # Symbolication related >> .gitignore
+echo app.*.symbols >> .gitignore
+
+echo # Obfuscation related >> .gitignore
+echo app.*.map.json >> .gitignore
+
+echo # Exceptions to above rules. >> .gitignore
+echo !**/ios/**/default.mode1v3 >> .gitignore
+echo !**/ios/**/default.mode2v3 >> .gitignore
+echo !**/ios/**/default.pbxuser >> .gitignore
+echo !**/ios/**/default.perspectivev3 >> .gitignore
+
+echo # Firebase >> .gitignore
+echo firebase_options.dart >> .gitignore
+echo google-services.json >> .gitignore
+echo GoogleService-Info.plist >> .gitignore

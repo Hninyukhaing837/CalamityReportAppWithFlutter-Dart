@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "522642764339",
+    "project_id": "calamity-report",
+    "storage_bucket": "calamity-report.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:522642764339:android:cfa63725b2a4c18dfe6946",
+        "android_client_info": {
+          "package_name": "com.example.calamity_report"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0fO2z8TCrfflfoIdQ8L9UDXlF9RvzFgU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
