@@ -1,31 +1,24 @@
 workflows:
-  # iOS Workflow
   ios-workflow:
-    name: iOS Workflow
+    name: iOS Build
     instance_type: mac_mini_m1
     max_build_duration: 120
     environment:
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        # Replace with your bundle ID
-        BUNDLE_ID: "com.example.calamityReport"
     
     scripts:
-      - name: Set up debug keystore
-        script: |
-          echo "Setting up iOS project..."
-          
       - name: Get Flutter packages
         script: |
-          flutter packages pub get
+          flutter pub get
           
       - name: Install CocoaPods dependencies
         script: |
-          cd ios && pod install
+          cd ios
+          pod install
           
-      - name: Flutter build iOS (Debug - No Signing)
+      - name: Build iOS (No Code Signing)
         script: |
           flutter build ios --debug --no-codesign
     
@@ -36,14 +29,13 @@ workflows:
     publishing:
       email:
         recipients:
-          - your.email@example.com  # Replace with your email
+          - your.email@example.com
         notify:
           success: true
           failure: true
 
-  # Android Workflow (Bonus)
   android-workflow:
-    name: Android Workflow
+    name: Android Build
     instance_type: linux_x2
     max_build_duration: 120
     environment:
@@ -52,9 +44,9 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: |
-          flutter packages pub get
+          flutter pub get
           
-      - name: Build APK
+      - name: Build Android APK
         script: |
           flutter build apk --release
     
