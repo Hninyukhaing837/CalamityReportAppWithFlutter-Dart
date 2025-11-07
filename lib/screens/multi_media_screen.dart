@@ -59,6 +59,7 @@ class _MultiMediaScreenState extends State<MultiMediaScreen> {
         setState(() {});
       }
     } catch (e) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error picking images: $e')),
       );
@@ -103,6 +104,7 @@ class _MultiMediaScreenState extends State<MultiMediaScreen> {
               .toList(),
           _items.first.type,
         );
+        // ignore: use_build_context_synchronously
         Navigator.pop(context);
       }
     } finally {
@@ -243,7 +245,9 @@ class _MultiMediaScreenState extends State<MultiMediaScreen> {
             RadioListTile<String>(
               title: const Text('All'),
               value: 'all',
+              // ignore: deprecated_member_use
               groupValue: _filterType,
+              // ignore: deprecated_member_use
               onChanged: (value) {
                 setState(() => _filterType = value!);
                 Navigator.pop(context);
@@ -252,7 +256,9 @@ class _MultiMediaScreenState extends State<MultiMediaScreen> {
             RadioListTile<String>(
               title: const Text('Images'),
               value: 'image',
+              // ignore: deprecated_member_use
               groupValue: _filterType,
+              // ignore: deprecated_member_use
               onChanged: (value) {
                 setState(() => _filterType = value!);
                 Navigator.pop(context);
@@ -270,7 +276,9 @@ class _MultiMediaScreenState extends State<MultiMediaScreen> {
             RadioListTile<String>(
               title: const Text('Favorites'),
               value: 'favorites',
+              // ignore: deprecated_member_use
               groupValue: _filterType,
+              // ignore: deprecated_member_use
               onChanged: (value) {
                 setState(() => _filterType = value!);
                 Navigator.pop(context);

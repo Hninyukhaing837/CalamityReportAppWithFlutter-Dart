@@ -26,7 +26,7 @@ class MediaItem {
     this.uploadProgress = 0.0,
     this.uploadError,
     this.fileSize = 0,
-  }) : this.dateAdded = dateAdded ?? DateTime.now();
+  }) : dateAdded = dateAdded ?? DateTime.now();
 
   File get file => File(filePath);
   

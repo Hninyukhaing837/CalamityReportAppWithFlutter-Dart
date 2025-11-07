@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class MediaProvider with ChangeNotifier {
-  List<File> _selectedMedia = [];
+  final List<File> _selectedMedia = [];
   bool _isUploading = false;
   double _uploadProgress = 0.0;
 

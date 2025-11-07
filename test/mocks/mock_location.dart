@@ -54,6 +54,7 @@ class MockLocation implements Location {
     LocationAccuracy? accuracy,
     int? interval,
     double? distanceFilter,
+    bool? pausesLocationUpdatesAutomatically,  // Added missing parameter
   }) async => true;
 
   @override
