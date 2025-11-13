@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'dart:io' show Platform; // Import for Platform
+import 'package:flutter/foundation.dart'; // Import for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart'; // Import Google Maps
 import 'package:provider/provider.dart';
 import '../providers/location_provider.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -18,31 +19,70 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPinsFromJson(); // Load pins when the screen initializes
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final locationProvider = Provider.of<LocationProvider>(context, listen: false);
       locationProvider.checkAndRequestPermissions();
     });
   }
 
-  // Load pins from the local JSON file
-  Future<void> _loadPinsFromJson() async {
-    final String jsonString = await rootBundle.loadString('assets/pins.json');
-    final List<dynamic> pinData = json.decode(jsonString);
-
-    setState(() {
-      _markers.addAll(pinData.map((pin) {
-        return Marker(
-          markerId: MarkerId(pin['id'].toString()),
-          position: LatLng(pin['latitude'], pin['longitude']),
-          infoWindow: InfoWindow(
-            title: pin['name'],
-            snippet: pin['description'],
+  Widget buildMap() {
+    if (kIsWeb) {
+      // Handle web platform
+      return Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.map, size: 64, color: Colors.grey),
+              SizedBox(height: 16),
+              Text(
+                'ここにGoogleマップが表示されます', // "The map will be displayed here"
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
           ),
-        );
-      }));
-    });
+        ),
+      );
+    } else if (Platform.isWindows) {
+      // Handle Windows platform
+      return Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.map, size: 64, color: Colors.grey),
+              SizedBox(height: 16),
+              Text(
+                'ここにGoogleマップが表示されます', // "The map will be displayed here"
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // Handle mobile platforms (Android/iOS)
+      return GoogleMap(
+        initialCameraPosition: const CameraPosition(
+          target: LatLng(35.6895, 139.6917), // Default to Tokyo
+          zoom: 10,
+        ),
+        markers: _markers, // Use the markers on the map
+        onMapCreated: (GoogleMapController controller) {
+          // Map is ready
+        },
+      );
+    }
   }
 
   @override
@@ -159,18 +199,9 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
 
-              // Map placeholder
+              // Map placeholder or actual map
               Expanded(
-                child: GoogleMap(
-                  initialCameraPosition: const CameraPosition(
-                    target: LatLng(35.6895, 139.6917), // Default to Tokyo
-                    zoom: 10,
-                  ),
-                  markers: _markers, // Use the markers on the map
-                  onMapCreated: (GoogleMapController controller) {
-                    // Map is ready
-                  },
-                ),
+                child: buildMap(),
               ),
             ],
           );
