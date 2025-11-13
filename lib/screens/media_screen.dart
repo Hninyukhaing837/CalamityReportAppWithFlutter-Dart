@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../providers/media_provider.dart';
 
 class MediaScreen extends StatefulWidget {
@@ -22,13 +23,19 @@ class _MediaScreenState extends State<MediaScreen> {
   }
 
   Future<void> _requestPermissions() async {
-    if (Platform.isAndroid) {
+    print('Requesting permissions...');
+    if (kIsWeb) {
+      // No permissions are required for web
+      print('Running on web: No permissions required.');
+    } else if (Platform.isAndroid) {
       await Permission.camera.request();
       await Permission.photos.request();
       await Permission.storage.request();
+      print('Permissions requested on Android.');
     } else if (Platform.isIOS) {
       await Permission.camera.request();
       await Permission.photos.request();
+      print('Permissions requested on iOS.');
     }
   }
 
@@ -48,7 +55,7 @@ class _MediaScreenState extends State<MediaScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
+          SnackBar(content: Text('画像の選択中にエラーが発生しました: $e')), // "Error picking image" -> "画像の選択中にエラーが発生しました"
         );
       }
     }
@@ -71,7 +78,7 @@ class _MediaScreenState extends State<MediaScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking images: $e')),
+          SnackBar(content: Text('複数画像の選択中にエラーが発生しました: $e')), // "Error picking images" -> "複数画像の選択中にエラーが発生しました"
         );
       }
     }
@@ -91,7 +98,7 @@ class _MediaScreenState extends State<MediaScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking video: $e')),
+          SnackBar(content: Text('ビデオの選択中にエラーが発生しました: $e')), // "Error picking video" -> "ビデオの選択中にエラーが発生しました"
         );
       }
     }
@@ -106,7 +113,7 @@ class _MediaScreenState extends State<MediaScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.camera_alt),
-                title: Text(isVideo ? 'Record Video' : 'Take Photo'),
+                title: Text(isVideo ? 'ビデオを録画' : '写真を撮影'), // "Record Video" -> "ビデオを録画", "Take Photo" -> "写真を撮影"
                 onTap: () {
                   Navigator.pop(context);
                   if (isVideo) {
@@ -118,7 +125,7 @@ class _MediaScreenState extends State<MediaScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library),
-                title: Text(isVideo ? 'Choose from Gallery' : 'Choose from Photos'),
+                title: Text(isVideo ? 'ギャラリーから選択' : '写真を選択'), // "Choose from Gallery" -> "ギャラリーから選択", "Choose from Photos" -> "写真を選択"
                 onTap: () {
                   Navigator.pop(context);
                   if (isVideo) {
@@ -131,7 +138,7 @@ class _MediaScreenState extends State<MediaScreen> {
               if (!isVideo)
                 ListTile(
                   leading: const Icon(Icons.photo_library_outlined),
-                  title: const Text('Choose Multiple Photos'),
+                  title: const Text('複数の写真を選択'), // "Choose Multiple Photos" -> "複数の写真を選択"
                   onTap: () {
                     Navigator.pop(context);
                     _pickMultipleImages();
@@ -148,7 +155,7 @@ class _MediaScreenState extends State<MediaScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Media Gallery'),
+        title: const Text('メディアギャラリー'), // "Media Gallery" -> "メディアギャラリー"
         actions: [
           Consumer<MediaProvider>(
             builder: (context, mediaProvider, child) {
@@ -159,19 +166,19 @@ class _MediaScreenState extends State<MediaScreen> {
                     showDialog(
                       context: context,
                       builder: (context) => AlertDialog(
-                        title: const Text('Clear All Media'),
-                        content: const Text('Are you sure you want to remove all media?'),
+                        title: const Text('すべてのメディアを削除'), // "Clear All Media" -> "すべてのメディアを削除"
+                        content: const Text('すべてのメディアを削除してもよろしいですか？'), // "Are you sure you want to remove all media?" -> "すべてのメディアを削除してもよろしいですか？"
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel'),
+                            child: const Text('キャンセル'), // "Cancel" -> "キャンセル"
                           ),
                           TextButton(
                             onPressed: () {
                               mediaProvider.clearMedia();
                               Navigator.pop(context);
                             },
-                            child: const Text('Clear'),
+                            child: const Text('削除'), // "Clear" -> "削除"
                           ),
                         ],
                       ),
@@ -197,7 +204,7 @@ class _MediaScreenState extends State<MediaScreen> {
                     ElevatedButton.icon(
                       onPressed: () => _showMediaSourceDialog(false),
                       icon: const Icon(Icons.photo),
-                      label: const Text('Add Photo'),
+                      label: const Text('写真を追加'), // "Add Photo" -> "写真を追加"
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -206,7 +213,7 @@ class _MediaScreenState extends State<MediaScreen> {
                     ElevatedButton.icon(
                       onPressed: () => _showMediaSourceDialog(true),
                       icon: const Icon(Icons.videocam),
-                      label: const Text('Add Video'),
+                      label: const Text('ビデオを追加'), // "Add Video" -> "ビデオを追加"
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -221,7 +228,7 @@ class _MediaScreenState extends State<MediaScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    '${mediaProvider.selectedMedia.length} item(s) selected',
+                    '${mediaProvider.selectedMedia.length} 件のメディアが選択されました', // "item(s) selected" -> "件のメディアが選択されました"
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
@@ -242,7 +249,7 @@ class _MediaScreenState extends State<MediaScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No media selected',
+                              'メディアが選択されていません', // "No media selected" -> "メディアが選択されていません"
                               style: TextStyle(
                                 fontSize: 18,
                                 color: Colors.grey.shade600,
@@ -250,7 +257,7 @@ class _MediaScreenState extends State<MediaScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Tap the buttons above to add photos or videos',
+                              '上のボタンをタップして写真やビデオを追加してください', // "Tap the buttons above to add photos or videos" -> "上のボタンをタップして写真やビデオを追加してください"
                               style: TextStyle(
                                 color: Colors.grey.shade500,
                               ),
@@ -286,19 +293,27 @@ class _MediaScreenState extends State<MediaScreen> {
                                           size: 48,
                                         ),
                                       )
-                                    : Image.file(
-                                        file,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Container(
+                                    : (file.existsSync())
+                                        ? Image.file(
+                                            file,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Container(
+                                                color: Colors.grey.shade300,
+                                                child: const Icon(
+                                                  Icons.broken_image,
+                                                  color: Colors.grey,
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        : Container(
                                             color: Colors.grey.shade300,
                                             child: const Icon(
                                               Icons.broken_image,
                                               color: Colors.grey,
                                             ),
-                                          );
-                                        },
-                                      ),
+                                          ),
                               ),
                               Positioned(
                                 top: 4,
@@ -338,7 +353,7 @@ class _MediaScreenState extends State<MediaScreen> {
                               // TODO: Implement upload to Firebase Storage
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Upload functionality coming soon'),
+                                  content: Text('アップロード機能は近日公開予定です'), // "Upload functionality coming soon" -> "アップロード機能は近日公開予定です"
                                 ),
                               );
                             },
@@ -354,8 +369,8 @@ class _MediaScreenState extends State<MediaScreen> {
                           : const Icon(Icons.cloud_upload),
                       label: Text(
                         mediaProvider.isUploading
-                            ? 'Uploading ${(mediaProvider.uploadProgress * 100).toInt()}%'
-                            : 'Upload to Cloud',
+                            ? 'アップロード中 ${(mediaProvider.uploadProgress * 100).toInt()}%' // "Uploading" -> "アップロード中"
+                            : 'クラウドにアップロード', // "Upload to Cloud" -> "クラウドにアップロード"
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,

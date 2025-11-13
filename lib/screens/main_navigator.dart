@@ -10,9 +10,10 @@ class MainNavigator extends StatelessWidget {
   });
 
   void _onTap(int index) {
+    print('Navigating to index: $index');
     navigationShell.goBranch(
       index,
-      initialLocation: index == navigationShell.currentIndex,
+      initialLocation: false, // Do not reset to the initial location
     );
   }
 
@@ -27,23 +28,23 @@ class MainNavigator extends StatelessWidget {
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: 'Home',
+            label: 'ホーム',
           ),
           NavigationDestination(
             icon: Icon(Icons.chat_outlined),
             selectedIcon: Icon(Icons.chat),
-            label: 'Chat',
+            label: 'チャット',
           ),
           NavigationDestination(
             icon: Icon(Icons.map_outlined),
             selectedIcon: Icon(Icons.map),
-            label: 'Map',
+            label: 'マップ',
           ),
           NavigationDestination(
             icon: Icon(Icons.photo_library_outlined),
             selectedIcon: Icon(Icons.photo_library),
-            label: 'Media',
-          ),
+            label: 'メディア',
+          )
         ],
       ),
     );

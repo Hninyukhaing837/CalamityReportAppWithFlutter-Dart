@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:location/location.dart';
 
 class LocationProvider with ChangeNotifier {
@@ -17,12 +17,19 @@ class LocationProvider with ChangeNotifier {
 
   Future<bool> checkAndRequestPermissions() async {
     try {
+      if (kIsWeb) {
+        // Skip permission checks for web
+        _errorMessage = null;
+        notifyListeners();
+        return true;
+      }
+
       // Check if location service is enabled
       _serviceEnabled = await _location.serviceEnabled();
       if (!_serviceEnabled) {
         _serviceEnabled = await _location.requestService();
         if (!_serviceEnabled) {
-          _errorMessage = 'Location services are disabled. Please enable them in settings.';
+          _errorMessage = '位置情報サービスが無効です。設定で有効にしてください。'; // "Location services are disabled. Please enable them in settings."
           notifyListeners();
           return false;
         }
@@ -33,7 +40,7 @@ class LocationProvider with ChangeNotifier {
       if (_permissionGranted == PermissionStatus.denied) {
         _permissionGranted = await _location.requestPermission();
         if (_permissionGranted != PermissionStatus.granted) {
-          _errorMessage = 'Location permission denied. Please grant permission in settings.';
+          _errorMessage = '位置情報の権限が拒否されました。設定で権限を付与してください。'; // "Location permission denied. Please grant permission in settings."
           notifyListeners();
           return false;
         }
@@ -43,7 +50,7 @@ class LocationProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'Error checking permissions: $e';
+      _errorMessage = '権限の確認中にエラーが発生しました: $e'; // "Error checking permissions: $e"
       debugPrint(_errorMessage);
       notifyListeners();
       return false;
@@ -52,8 +59,15 @@ class LocationProvider with ChangeNotifier {
 
   Future<void> getCurrentLocation() async {
     try {
+      if (kIsWeb) {
+        // Skip location retrieval for web
+        _errorMessage = '現在地の取得はWebではサポートされていません'; // "Getting location is not supported on the web."
+        notifyListeners();
+        return;
+      }
+
       _errorMessage = null;
-      
+
       final hasPermission = await checkAndRequestPermissions();
       if (!hasPermission) {
         return;
@@ -62,7 +76,7 @@ class LocationProvider with ChangeNotifier {
       _currentLocation = await _location.getLocation();
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Error getting location: $e';
+      _errorMessage = '現在地の取得中にエラーが発生しました: $e'; // "Error getting location: $e"
       debugPrint(_errorMessage);
       notifyListeners();
     }
@@ -70,6 +84,13 @@ class LocationProvider with ChangeNotifier {
 
   Future<void> startTracking() async {
     try {
+      if (kIsWeb) {
+        // Skip location tracking for web
+        _errorMessage = '位置情報追跡はWebではサポートされていません'; // "Location tracking is not supported on the web."
+        notifyListeners();
+        return;
+      }
+
       final hasPermission = await checkAndRequestPermissions();
       if (!hasPermission) {
         return;
@@ -77,20 +98,20 @@ class LocationProvider with ChangeNotifier {
 
       _isTracking = true;
       _errorMessage = null;
-      
+
       _location.onLocationChanged.listen((LocationData locationData) {
         _currentLocation = locationData;
         notifyListeners();
       }, onError: (error) {
-        _errorMessage = 'Location tracking error: $error';
+        _errorMessage = '位置情報追跡中にエラーが発生しました: $error'; // "Location tracking error: $error"
         _isTracking = false;
         debugPrint(_errorMessage);
         notifyListeners();
       });
-      
+
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Error starting location tracking: $e';
+      _errorMessage = '位置情報追跡の開始中にエラーが発生しました: $e'; // "Error starting location tracking: $e"
       _isTracking = false;
       debugPrint(_errorMessage);
       notifyListeners();
@@ -98,6 +119,13 @@ class LocationProvider with ChangeNotifier {
   }
 
   void stopTracking() {
+    if (kIsWeb) {
+      // Skip stop tracking for web
+      _errorMessage = '位置情報追跡はWebではサポートされていません'; // "Location tracking is not supported on the web."
+      notifyListeners();
+      return;
+    }
+
     _isTracking = false;
     notifyListeners();
   }

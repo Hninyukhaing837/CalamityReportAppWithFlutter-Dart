@@ -32,5 +32,17 @@
     </array>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs camera access to take photos and videos.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This app needs photo library access to select photos and videos.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>This app needs photo library access to save photos and videos.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>このアプリは、地図機能のために現在地を使用します。</string> <!-- "This app uses your location for map functionality." -->
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>このアプリは、地図機能のために常に現在地を使用します。</string> <!-- "This app always uses your location for map functionality." -->
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>このアプリは、地図機能のために現在地を使用します。</string> <!-- "This app uses your location for map functionality." -->
 </dict>
 </plist>

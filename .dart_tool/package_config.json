@@ -68,6 +68,24 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "cloud_functions",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/cloud_functions-6.0.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "cloud_functions_platform_interface",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/cloud_functions_platform_interface-5.8.7",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "cloud_functions_web",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/cloud_functions_web-5.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
       "name": "collection",
       "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/collection-1.19.1",
       "packageUri": "lib/",
@@ -123,9 +141,9 @@
     },
     {
       "name": "file_selector_platform_interface",
-      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_platform_interface-2.6.2",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_platform_interface-2.7.0",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.7"
     },
     {
       "name": "file_selector_windows",
@@ -166,6 +184,24 @@
     {
       "name": "firebase_core_web",
       "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_core_web-3.3.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "firebase_messaging",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_messaging-16.0.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "firebase_messaging_platform_interface",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_messaging_platform_interface-4.7.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "firebase_messaging_web",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_messaging_web-4.1.0",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -273,7 +309,7 @@
     },
     {
       "name": "google_maps_flutter_web",
-      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/google_maps_flutter_web-0.5.14+2",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/google_maps_flutter_web-0.5.14+3",
       "packageUri": "lib/",
       "languageVersion": "3.7"
     },
@@ -285,7 +321,7 @@
     },
     {
       "name": "http",
-      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/http-1.5.0",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/http-1.6.0",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -621,9 +657,9 @@
     },
     {
       "name": "video_player",
-      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/video_player-2.10.0",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/video_player-2.10.1",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "video_player_android",
@@ -633,7 +669,7 @@
     },
     {
       "name": "video_player_avfoundation",
-      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/video_player_avfoundation-2.8.5",
+      "rootUri": "file:///C:/Users/Hnin%20Yu%20Khaing/AppData/Local/Pub/Cache/hosted/pub.dev/video_player_avfoundation-2.8.6",
       "packageUri": "lib/",
       "languageVersion": "3.9"
     },

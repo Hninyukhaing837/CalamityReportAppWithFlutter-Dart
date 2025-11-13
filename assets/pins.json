@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "ピン 1",
+    "latitude": 35.6895,
+    "longitude": 139.6917,
+    "description": "東京のピン"
+  },
+  {
+    "id": 2,
+    "name": "ピン 2",
+    "latitude": 34.6937,
+    "longitude": 135.5023,
+    "description": "大阪のピン"
+  },
+  {
+    "id": 3,
+    "name": "ピン 3",
+    "latitude": 43.0642,
+    "longitude": 141.3469,
+    "description": "札幌のピン"
+  }
+]

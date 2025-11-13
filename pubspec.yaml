@@ -11,12 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # Firebase - Updated to latest versions
-  firebase_core: ^4.2.1
-  firebase_auth: ^6.1.2
-  firebase_storage: ^13.0.4
-  cloud_firestore: ^6.1.0
-  
   # State Management
   provider: ^6.1.2
   
@@ -39,6 +33,12 @@ dependencies:
   # Utilities
   path: ^1.9.0
   location_platform_interface: ^6.0.1
+  firebase_core: ^4.2.1
+  firebase_auth: ^6.1.2
+  firebase_storage: ^13.0.4
+  cloud_functions: ^6.0.4
+  firebase_messaging: ^16.0.4
+  cloud_firestore: 6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -47,3 +47,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/pins.json

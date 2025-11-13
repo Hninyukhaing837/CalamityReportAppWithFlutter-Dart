@@ -70,10 +70,13 @@ class MediaGridItem extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (item.type == 'image' || (item.type == 'video' && item.thumbnailPath != null))
+              if ((item.type == 'image' || (item.type == 'video' && item.thumbnailPath != null)) &&
+                  (item.thumbnailPath != null && File(item.thumbnailPath!).existsSync() ||
+                   File(item.filePath).existsSync()))
                 Image.file(
                   File(item.thumbnailPath ?? item.filePath),
                   fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 50),
                 )
               else
                 Column(

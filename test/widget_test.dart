@@ -1,3 +1,4 @@
+import 'package:calamity_report/screens/conversations_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +7,6 @@ import 'package:calamity_report/providers/auth_provider.dart';
 import 'package:calamity_report/providers/media_provider.dart';
 import 'package:calamity_report/providers/location_provider.dart';
 import 'package:calamity_report/screens/home_screen.dart';
-import 'package:calamity_report/screens/chat_screen.dart';
 import 'package:calamity_report/screens/map_screen.dart';
 import 'package:calamity_report/screens/media_screen.dart';
 
@@ -34,15 +34,15 @@ void main() {
       expect(find.byIcon(Icons.emergency), findsOneWidget);
     });
 
-    testWidgets('ChatScreen renders correctly', (WidgetTester tester) async {
+    testWidgets('ConversationsScreen renders correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: ChatScreen(),
+        MaterialApp(
+          home: ConversationsScreen(),
         ),
       );
 
       await tester.pump();
-      expect(find.text('Chat'), findsOneWidget);
+      expect(find.text('メッセージ'), findsOneWidget); // "Messages"
     });
 
     testWidgets('MapScreen renders correctly', (WidgetTester tester) async {

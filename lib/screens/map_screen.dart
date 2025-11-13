@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart'; // Import Google Maps
 import 'package:provider/provider.dart';
 import '../providers/location_provider.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -10,12 +13,35 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
+  final Set<Marker> _markers = {}; // Define _markers to store map markers
+
   @override
   void initState() {
     super.initState();
+    _loadPinsFromJson(); // Load pins when the screen initializes
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final locationProvider = Provider.of<LocationProvider>(context, listen: false);
       locationProvider.checkAndRequestPermissions();
+    });
+  }
+
+  // Load pins from the local JSON file
+  Future<void> _loadPinsFromJson() async {
+    final String jsonString = await rootBundle.loadString('assets/pins.json');
+    final List<dynamic> pinData = json.decode(jsonString);
+
+    setState(() {
+      _markers.addAll(pinData.map((pin) {
+        return Marker(
+          markerId: MarkerId(pin['id'].toString()),
+          position: LatLng(pin['latitude'], pin['longitude']),
+          infoWindow: InfoWindow(
+            title: pin['name'],
+            snippet: pin['description'],
+          ),
+        );
+      }));
     });
   }
 
@@ -23,7 +49,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Map & Location'),
+        title: const Text('地図と位置情報'), // "Map & Location"
       ),
       body: Consumer<LocationProvider>(
         builder: (context, locationProvider, child) {
@@ -65,7 +91,7 @@ class _MapScreenState extends State<MapScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Current Location',
+                              '現在地', // "Current Location"
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -77,20 +103,20 @@ class _MapScreenState extends State<MapScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Latitude: ${locationProvider.currentLocation!.latitude?.toStringAsFixed(6)}',
+                                    '緯度: ${locationProvider.currentLocation!.latitude?.toStringAsFixed(6)}', // "Latitude"
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Longitude: ${locationProvider.currentLocation!.longitude?.toStringAsFixed(6)}',
+                                    '経度: ${locationProvider.currentLocation!.longitude?.toStringAsFixed(6)}', // "Longitude"
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Accuracy: ${locationProvider.currentLocation!.accuracy?.toStringAsFixed(2)} m',
+                                    '精度: ${locationProvider.currentLocation!.accuracy?.toStringAsFixed(2)} m', // "Accuracy"
                                   ),
                                 ],
                               )
                             else
-                              const Text('No location data available'),
+                              const Text('位置情報が利用できません'), // "No location data available"
                           ],
                         ),
                       ),
@@ -104,7 +130,7 @@ class _MapScreenState extends State<MapScreen> {
                         ElevatedButton.icon(
                           onPressed: () => locationProvider.getCurrentLocation(),
                           icon: const Icon(Icons.my_location),
-                          label: const Text('Get Location'),
+                          label: const Text('現在地を取得'), // "Get Location"
                         ),
                         ElevatedButton.icon(
                           onPressed: locationProvider.isTracking
@@ -117,8 +143,8 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                           label: Text(
                             locationProvider.isTracking
-                                ? 'Stop Tracking'
-                                : 'Start Tracking',
+                                ? '追跡を停止' // "Stop Tracking"
+                                : '追跡を開始', // "Start Tracking"
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: locationProvider.isTracking
@@ -135,25 +161,15 @@ class _MapScreenState extends State<MapScreen> {
 
               // Map placeholder
               Expanded(
-                child: Container(
-                  margin: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(12),
+                child: GoogleMap(
+                  initialCameraPosition: const CameraPosition(
+                    target: LatLng(35.6895, 139.6917), // Default to Tokyo
+                    zoom: 10,
                   ),
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.map, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          'Google Maps will be displayed here',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
+                  markers: _markers, // Use the markers on the map
+                  onMapCreated: (GoogleMapController controller) {
+                    // Map is ready
+                  },
                 ),
               ),
             ],
