@@ -1,3 +1,4 @@
+import 'package:calamity_report/services/media_upload_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -5,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../providers/media_provider.dart';
+import 'package:location/location.dart';
 
 class MediaScreen extends StatefulWidget {
   const MediaScreen({super.key});
@@ -349,12 +351,21 @@ class _MediaScreenState extends State<MediaScreen> {
                     child: ElevatedButton.icon(
                       onPressed: mediaProvider.isUploading
                           ? null
-                          : () {
-                              // TODO: Implement upload to Firebase Storage
+                          : () async {
+                              final mediaProvider = Provider.of<MediaProvider>(context, listen: false);
+                              for (var file in mediaProvider.selectedMedia) {
+                                await MediaUploadService().uploadMedia(
+                                  file: file,
+                                  folder: 'uploads', // Specify the folder in Firebase Storage
+                                  fileName: '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}', // Generate a unique file name
+                                  onProgress: (progress) {
+                                    mediaProvider.setUploadProgress(progress);
+                                  },
+                                );
+                              }
+                              mediaProvider.clearMedia();
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('アップロード機能は近日公開予定です'), // "Upload functionality coming soon" -> "アップロード機能は近日公開予定です"
-                                ),
+                                const SnackBar(content: Text('アップロードが完了しました')), // "Upload completed" -> "アップロードが完了しました"
                               );
                             },
                       icon: mediaProvider.isUploading

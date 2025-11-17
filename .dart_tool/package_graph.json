@@ -20,11 +20,13 @@
         "go_router",
         "google_maps_flutter",
         "image_picker",
+        "intl",
         "location",
         "location_platform_interface",
         "path",
         "path_provider",
         "permission_handler",
+        "photo_view",
         "provider",
         "video_player"
       ],
@@ -56,6 +58,13 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "photo_view",
+      "version": "0.14.0",
+      "dependencies": [
+        "flutter"
       ]
     },
     {
@@ -129,7 +138,7 @@
     },
     {
       "name": "location_platform_interface",
-      "version": "6.0.1",
+      "version": "3.1.2",
       "dependencies": [
         "flutter",
         "plugin_platform_interface"
@@ -213,7 +222,7 @@
     },
     {
       "name": "image_picker",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "dependencies": [
         "flutter",
         "image_picker_android",
@@ -227,7 +236,7 @@
     },
     {
       "name": "location",
-      "version": "8.0.1",
+      "version": "5.0.3",
       "dependencies": [
         "flutter",
         "location_platform_interface",
@@ -266,6 +275,15 @@
       ]
     },
     {
+      "name": "intl",
+      "version": "0.18.1",
+      "dependencies": [
+        "clock",
+        "meta",
+        "path"
+      ]
+    },
+    {
       "name": "flutter",
       "version": "0.0.0",
       "dependencies": [
@@ -291,7 +309,7 @@
     },
     {
       "name": "meta",
-      "version": "1.16.0",
+      "version": "1.17.0",
       "dependencies": []
     },
     {
@@ -348,7 +366,7 @@
     },
     {
       "name": "test_api",
-      "version": "0.7.6",
+      "version": "0.7.7",
       "dependencies": [
         "async",
         "boolean_selector",
@@ -781,13 +799,13 @@
     },
     {
       "name": "location_web",
-      "version": "6.0.1",
+      "version": "4.2.0",
       "dependencies": [
         "flutter",
         "flutter_web_plugins",
         "http_parser",
-        "location_platform_interface",
-        "web"
+        "js",
+        "location_platform_interface"
       ]
     },
     {
@@ -816,7 +834,7 @@
     },
     {
       "name": "google_maps_flutter_ios",
-      "version": "2.15.5",
+      "version": "2.15.6",
       "dependencies": [
         "flutter",
         "google_maps_flutter_platform_interface",
@@ -1077,6 +1095,13 @@
       "version": "2.0.32",
       "dependencies": [
         "flutter"
+      ]
+    },
+    {
+      "name": "js",
+      "version": "0.6.7",
+      "dependencies": [
+        "meta"
       ]
     },
     {

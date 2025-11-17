@@ -1,12 +1,15 @@
 import 'package:calamity_report/models/media_item.dart';
+import 'package:calamity_report/services/media_upload_service.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'dart:typed_data'; // For web
+import 'dart:io'; // For mobile
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import '../services/media_service.dart';
 import '../screens/media_preview_screen.dart';
 
 class MediaPicker extends StatefulWidget {
-  final Function(File, String) onMediaSelected;
+  final Function(File, String) onMediaSelected; // Change dynamic to File
   final bool allowVideo;
   final double? maxWidth;
   final double? maxHeight;
@@ -52,6 +55,24 @@ class _MediaPickerState extends State<MediaPicker> {
             );
 
       if (file != null && mounted) {
+        if (kIsWeb) {
+          // Web: Use Uint8List for uploads
+          final Uint8List fileBytes = await file.readAsBytes();
+          await MediaUploadService().uploadMedia(
+            file: fileBytes,
+            folder: 'uploads',
+            fileName: file.name,
+          );
+        } else {
+          // Mobile: Use File for uploads
+          final File filePath = File(file.path);
+          await MediaUploadService().uploadMedia(
+            file: filePath,
+            folder: 'uploads',
+            fileName: file.name,
+          );
+        }
+
         final mediaItem = MediaItem(
           filePath: file.path,
           type: isVideo ? 'video' : 'image',
@@ -61,8 +82,8 @@ class _MediaPickerState extends State<MediaPicker> {
           context,
           MaterialPageRoute(
             builder: (context) => MediaPreviewScreen(
-              item: mediaItem,
-              onUpload: widget.onMediaSelected,
+              item: mediaItem, // Pass MediaItem directly
+              onUpload: (file, type) => widget.onMediaSelected(file as dynamic, type), // Cast file to dynamic
             ),
           ),
         );
@@ -177,7 +198,9 @@ class _MediaPickerState extends State<MediaPicker> {
 /*
 MediaPicker(
   onMediaSelected: (file, type) {
-    print('Selected $type: ${file.path}');
+    if (file is File) { // Ensure the dynamic type is a File
+      print('Selected $type: ${file.path}');
+    }
   },
   allowVideo: true,
   maxWidth: 1920,

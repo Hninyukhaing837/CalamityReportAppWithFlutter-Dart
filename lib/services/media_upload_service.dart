@@ -1,62 +1,45 @@
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:firebase_storage/firebase_storage.dart';
-import '../models/media_item.dart';
+import 'dart:typed_data'; // For web-compatible file handling
+import 'dart:io'; // For mobile file handling (dart:io is not supported on web)
 
 class MediaUploadService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  Future<String?> uploadMedia(
-    MediaItem item,
-    void Function(double) onProgress,
-  ) async {
+  // Upload media to Firebase Storage
+  Future<String?> uploadMedia({
+    required dynamic file, // Use dynamic to support both File (mobile) and Uint8List (web)
+    required String folder, // Folder name in Firebase Storage
+    required String fileName, // File name
+    Function(double progress)? onProgress, // Optional progress callback
+  }) async {
     try {
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${item.file.path.split('/').last}';
-      final ref = _storage.ref().child('${item.type}s/$fileName');
+      final ref = _storage.ref().child('$folder/$fileName');
+      UploadTask uploadTask;
 
-      final uploadTask = ref.putFile(
-        item.file,
-        SettableMetadata(
-          contentType: item.type == 'video' ? 'video/mp4' : 'image/jpeg',
-          customMetadata: {
-            'uploadedAt': DateTime.now().toIso8601String(),
-            'type': item.type,
-          },
-        ),
-      );
+      if (kIsWeb) {
+        // Web: Use Uint8List for file uploads
+        uploadTask = ref.putData(file as Uint8List);
+      } else {
+        // Mobile: Use File for file uploads
+        uploadTask = ref.putFile(file as File);
+      }
 
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        onProgress(progress);
+      // Track upload progress
+      uploadTask.snapshotEvents.listen((event) {
+        if (onProgress != null) {
+          final progress = event.bytesTransferred / event.totalBytes;
+          onProgress(progress);
+        }
       });
 
+      // Wait for the upload to complete
       final snapshot = await uploadTask;
-      return await snapshot.ref.getDownloadURL();
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      return downloadUrl; // Return the download URL
     } catch (e) {
       print('Error uploading media: $e');
       return null;
     }
-  }
-
-  Future<List<String>> uploadMultipleMedia(
-    List<MediaItem> items,
-    void Function(MediaItem, double) onItemProgress,
-    void Function(MediaItem, String?) onItemComplete,
-  ) async {
-    final List<String> uploadedUrls = [];
-
-    for (var item in items) {
-      if (!item.isSelected) continue;
-
-      final url = await uploadMedia(
-        item,
-        (progress) => onItemProgress(item, progress),
-      );
-
-      onItemComplete(item, url);
-      if (url != null) {
-        uploadedUrls.add(url);
-      }
-    }
-
-    return uploadedUrls;
   }
 }

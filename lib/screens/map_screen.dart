@@ -3,8 +3,10 @@ import 'dart:io' show Platform; // Import for Platform
 import 'package:flutter/foundation.dart'; // Import for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart'; // Import Google Maps
+import 'package:flutter/services.dart' show rootBundle; // Import for loading JSON
 import 'package:provider/provider.dart';
 import '../providers/location_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -15,6 +17,9 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final Set<Marker> _markers = {}; // Define _markers to store map markers
+  late GoogleMapController _mapController;
+  BitmapDescriptor? _customMarkerIcon; // For custom marker icons
+  Marker? _currentLocationMarker; // Marker for current location
 
   @override
   void initState() {
@@ -23,9 +28,123 @@ class _MapScreenState extends State<MapScreen> {
       final locationProvider = Provider.of<LocationProvider>(context, listen: false);
       locationProvider.checkAndRequestPermissions();
     });
+    _loadPinsFromJson(); // Load pins when the screen initializes
+    _loadCustomMarkerIcon(); // Load custom marker icon
+    _loadMediaLocations();
   }
 
-  Widget buildMap() {
+  @override
+  void dispose() {
+    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+    locationProvider.stopTracking(); // Stop location tracking when the screen is disposed
+    super.dispose();
+  }
+
+  // Load pins from the local JSON file
+  Future<void> _loadPinsFromJson() async {
+    try {
+      final String jsonString = await rootBundle.loadString('assets/pins.json');
+      final List<dynamic> pinData = json.decode(jsonString);
+
+      setState(() {
+        _markers.addAll(pinData.map((pin) {
+          return Marker(
+            markerId: MarkerId(pin['id'].toString()),
+            position: LatLng(pin['latitude'], pin['longitude']),
+            infoWindow: InfoWindow(
+              title: pin['name'],
+              snippet: pin['description'],
+            ),
+            icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker, // Use custom marker icon
+          );
+        }));
+      });
+    } catch (e) {
+      print('Error loading pins: $e');
+    }
+  }
+
+  // Load custom marker icon
+  Future<void> _loadCustomMarkerIcon() async {
+    _customMarkerIcon = await BitmapDescriptor.fromAssetImage(
+      const ImageConfiguration(size: Size(48, 48)),
+      'assets/custom_marker.png', // Path to your custom marker icon
+    );
+  }
+
+  // Update current location marker
+  void _updateCurrentLocationMarker(LocationProvider locationProvider) {
+    if (locationProvider.currentLocation != null &&
+        locationProvider.currentLocation!.latitude != null &&
+        locationProvider.currentLocation!.longitude != null) {
+      final double latitude = locationProvider.currentLocation!.latitude!;
+      final double longitude = locationProvider.currentLocation!.longitude!;
+
+      setState(() {
+        _currentLocationMarker = Marker(
+          markerId: const MarkerId('current_location'),
+          position: LatLng(latitude, longitude),
+          infoWindow: const InfoWindow(title: '現在地'), // "Current Location"
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue), // Blue marker for current location
+        );
+        _markers.add(_currentLocationMarker!);
+      });
+
+      // Move the map camera to the current location
+      _mapController.animateCamera(CameraUpdate.newLatLng(LatLng(latitude, longitude)));
+    } else {
+      print('Error: Current location is null or incomplete.');
+    }
+  }
+
+  // Share current location
+  void _shareCurrentLocation(LocationProvider locationProvider) {
+    if (locationProvider.currentLocation != null &&
+        locationProvider.currentLocation!.latitude != null &&
+        locationProvider.currentLocation!.longitude != null) {
+      final latitude = locationProvider.currentLocation!.latitude!;
+      final longitude = locationProvider.currentLocation!.longitude!;
+      final locationUrl = 'https://www.google.com/maps?q=$latitude,$longitude';
+
+      // Share location URL (you can use a sharing plugin like `share_plus`)
+      print('Share this location: $locationUrl');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('現在地を共有しました: $locationUrl')), // "Shared current location"
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('現在地が利用できません')), // "Current location not available"
+      );
+    }
+  }
+
+  // Load media locations from Firestore
+  Future<void> _loadMediaLocations() async {
+    try {
+      final mediaDocs = await FirebaseFirestore.instance.collection('media').get();
+      for (var doc in mediaDocs.docs) {
+        final data = doc.data();
+        final location = data['location'];
+        if (location != null) {
+          final marker = Marker(
+            markerId: MarkerId(doc.id),
+            position: LatLng(location['latitude'], location['longitude']),
+            infoWindow: InfoWindow(
+              title: data['incidentCase'] ?? 'メディア',
+              snippet: data['type'],
+            ),
+          );
+          setState(() {
+            _markers.add(marker);
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading media locations: $e');
+    }
+  }
+
+  Widget buildMap(LocationProvider locationProvider) {
     if (kIsWeb) {
       // Handle web platform
       return Container(
@@ -72,6 +191,7 @@ class _MapScreenState extends State<MapScreen> {
       );
     } else {
       // Handle mobile platforms (Android/iOS)
+      _updateCurrentLocationMarker(locationProvider); // Update current location marker
       return GoogleMap(
         initialCameraPosition: const CameraPosition(
           target: LatLng(35.6895, 139.6917), // Default to Tokyo
@@ -79,7 +199,7 @@ class _MapScreenState extends State<MapScreen> {
         ),
         markers: _markers, // Use the markers on the map
         onMapCreated: (GoogleMapController controller) {
-          // Map is ready
+          _mapController = controller;
         },
       );
     }
@@ -193,6 +313,11 @@ class _MapScreenState extends State<MapScreen> {
                             foregroundColor: Colors.white,
                           ),
                         ),
+                        ElevatedButton.icon(
+                          onPressed: () => _shareCurrentLocation(locationProvider),
+                          icon: const Icon(Icons.share),
+                          label: const Text('現在地を共有'), // "Share Location"
+                        ),
                       ],
                     ),
                   ],
@@ -201,7 +326,7 @@ class _MapScreenState extends State<MapScreen> {
 
               // Map placeholder or actual map
               Expanded(
-                child: buildMap(),
+                child: buildMap(locationProvider),
               ),
             ],
           );
@@ -210,17 +335,3 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 }
-
-//Location permission handling
-//Current location retrieval
-//Display of latitude and longitude
-//Location refresh button
-//Share location button (placeholder functionality)
-
-//The map screen includes:
-//Real-time location tracking
-//Google Maps integration
-//Location marker display
-//Error handling
-//Permission management
-//Location updates button

@@ -25,13 +25,18 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   bool _isComposing = false;
   bool _showScrollButton = false;
 
-  late String chatId;
+  String? _chatId;
 
   @override
   void initState() {
     super.initState();
-    chatId = _getChatId(currentUser!.uid, widget.otherUserId);
-    _scrollController.addListener(_scrollListener);
+    if (currentUser != null) {
+      _chatId = _getChatId(currentUser!.uid, widget.otherUserId);
+      _scrollController.addListener(_scrollListener);
+      // 画面を開いたら既読にする
+      _markMessagesAsSeen();
+      _updateLastSeen();
+    }
   }
 
   void _scrollListener() {
@@ -90,8 +95,66 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     return colors[hash.abs() % colors.length];
   }
 
+  // ユーザーのlastSeenを更新
+  Future<void> _updateLastSeen() async {
+    if (currentUser == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser!.uid)
+          .set({
+        'lastSeen': FieldValue.serverTimestamp(),
+        'isOnline': true,
+      }, SetOptions(merge: true));
+    } catch (e) {
+    }
+  }
+
+  // メッセージを既読(seen)にする
+  Future<void> _markMessagesAsSeen() async {
+    if (currentUser == null || _chatId == null) return;
+
+    try { 
+      // 相手から送られたメッセージで、まだ既読になっていないものを取得
+      final unreadMessages = await FirebaseFirestore.instance
+          .collection('direct_messages')
+          .doc(_chatId)
+          .collection('messages')
+          .where('senderId', isEqualTo: widget.otherUserId)
+          .where('recipientId', isEqualTo: currentUser!.uid)
+          .get();
+
+      if (unreadMessages.docs.isEmpty) {
+        return;
+      }
+
+      // statusがseenでないものだけを既読にする
+      final batch = FirebaseFirestore.instance.batch();
+      int updateCount = 0;
+
+      for (var doc in unreadMessages.docs) {
+        final data = doc.data();
+        final currentStatus = data['status'] as String?;
+        
+        if (currentStatus != 'seen') {
+          batch.update(doc.reference, {
+            'status': 'seen',
+            'seenAt': FieldValue.serverTimestamp(),
+          });
+          updateCount++;
+        }
+      }
+
+      if (updateCount > 0) {
+        await batch.commit();
+      }
+    } catch (e) {
+    }
+  }
+
+  // メッセージ送信
   void _sendMessage() async {
-    if (currentUser == null) {
+    if (currentUser == null || _chatId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('ログインしてください')),
       );
@@ -111,16 +174,19 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         'senderId': currentUser!.uid,
         'senderName': _getCurrentUserName(),
         'recipientId': widget.otherUserId,
+        'status': 'sent', // 初期ステータス
+        'deliveredAt': null,
+        'seenAt': null,
       };
 
-      // Add message to the chat
-      await FirebaseFirestore.instance
+      // メッセージを追加
+      final docRef = await FirebaseFirestore.instance
           .collection('direct_messages')
-          .doc(chatId)
+          .doc(_chatId)
           .collection('messages')
           .add(messageData);
 
-      // Update chat metadata for both users
+      // チャットメタデータを更新
       final chatMetadata = {
         'participants': [currentUser!.uid, widget.otherUserId],
         'lastMessage': messageText,
@@ -130,17 +196,178 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
       await FirebaseFirestore.instance
           .collection('direct_messages')
-          .doc(chatId)
+          .doc(_chatId)
           .set(chatMetadata, SetOptions(merge: true));
+
+      // 少し待ってからdeliveredに更新
+      await Future.delayed(const Duration(milliseconds: 200));
+      await docRef.update({
+        'status': 'delivered',
+        'deliveredAt': FieldValue.serverTimestamp(),
+      });
 
       _scrollToBottom();
     } catch (e) {
-      debugPrint('Error sending message: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('送信失敗: $e'),
             backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // メッセージオプションを表示（削除のみ - 自分のメッセージの場合のみ）
+  void _showMessageOptions(BuildContext context, String messageId, String senderId, String content) {
+    final isMyMessage = senderId == currentUser?.uid;
+
+    // 自分のメッセージでない場合は何も表示しない
+    if (!isMyMessage) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red, size: 24),
+              title: const Text(
+                'メッセージを削除',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteMessage(messageId);
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // メッセージ削除
+  Future<void> _deleteMessage(String messageId) async {
+
+    if (currentUser == null || _chatId == null) {
+      return;
+    }
+
+    // 確認ダイアログ
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            SizedBox(width: 12),
+            Text('メッセージを削除'),
+          ],
+        ),
+        content: const Text(
+          'このメッセージを削除しますか？\n\n相手の画面からも削除されます。',
+          style: TextStyle(fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context, false);
+            },
+            child: const Text('キャンセル'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('削除する'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true || !mounted) {
+      return;
+    }
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('direct_messages')
+          .doc(_chatId)
+          .collection('messages')
+          .doc(messageId);
+
+      // 存在確認
+      final docSnapshot = await docRef.get();
+      
+      if (!docSnapshot.exists) {
+        throw Exception('メッセージが見つかりません');
+      }
+
+      final data = docSnapshot.data()!;
+      final senderId = data['senderId'] as String?;
+
+      // 権限確認
+      if (senderId != currentUser!.uid) {
+        throw Exception('自分のメッセージのみ削除できます');
+      }
+
+      // 削除実行
+      await docRef.delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('メッセージを削除しました'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('削除失敗: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -206,8 +433,46 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     );
   }
 
+  // ステータスアイコン
+  Widget _buildStatusIndicator(String? status) {
+    switch (status) {
+      case 'sent':
+        return const Icon(Icons.done, size: 14, color: Colors.white70); // Single checkmark
+      case 'delivered':
+        return const Icon(Icons.done_all, size: 14, color: Colors.white70); // Double checkmark
+      case 'seen':
+        return const Text(
+          'Seen',
+          style: TextStyle(fontSize: 12, color: Colors.lightBlueAccent), // "Seen" text
+        );
+      default:
+        return const SizedBox.shrink(); // No indicator for unknown status
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // chatIdまたはcurrentUserがnullの場合
+    if (currentUser == null || _chatId == null) {
+      return Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        appBar: AppBar(
+          backgroundColor: widget.otherUserColor,
+          title: const Text('チャット'),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: Colors.red),
+              SizedBox(height: 16),
+              Text('ログインが必要です'),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -236,13 +501,43 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                widget.otherUserName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.otherUserName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  // オンライン状態表示
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(widget.otherUserId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData && snapshot.data!.exists) {
+                        final data = snapshot.data!.data() as Map<String, dynamic>;
+                        final isOnline = data['isOnline'] as bool? ?? false;
+                        final lastSeen = data['lastSeen'] as Timestamp?;
+                        
+                        if (isOnline && lastSeen != null) {
+                          final difference = DateTime.now().difference(lastSeen.toDate());
+                          if (difference.inMinutes < 2) {
+                            return const Text(
+                              'オンライン',
+                              style: TextStyle(fontSize: 11, color: Colors.white70),
+                            );
+                          }
+                        }
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
               ),
             ),
           ],
@@ -254,7 +549,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('direct_messages')
-                  .doc(chatId)
+                  .doc(_chatId)
                   .collection('messages')
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
@@ -319,6 +614,13 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
                 final messages = snapshot.data!.docs;
 
+                // メッセージが表示されたら既読にする
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    _markMessagesAsSeen();
+                  }
+                });
+
                 return Stack(
                   children: [
                     ListView.builder(
@@ -331,8 +633,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                         final message = messageDoc.data() as Map<String, dynamic>;
                         final isCurrentUser = message['senderId'] == currentUser?.uid;
                         final timestamp = message['timestamp'] as Timestamp?;
+                        final status = message['status'] as String?;
 
-                        // Check if we need date divider
+                        // 日付区切りの判定
                         bool showDivider = false;
                         if (index < messages.length - 1) {
                           final nextMessage = messages[index + 1].data() as Map<String, dynamic>;
@@ -353,9 +656,12 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                             if (showDivider && timestamp != null)
                               _buildDateDivider(timestamp.toDate()),
                             _buildMessageBubble(
+                              messageId: messageDoc.id,
                               message: message['content'] ?? '',
                               timestamp: timestamp,
                               isCurrentUser: isCurrentUser,
+                              senderId: message['senderId'] ?? '',
+                              status: status,
                             ),
                           ],
                         );
@@ -383,11 +689,15 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   }
 
   Widget _buildMessageBubble({
+    required String messageId,
     required String message,
     required Timestamp? timestamp,
     required bool isCurrentUser,
+    required String senderId,
+    String? status,
   }) {
-    final userColor = isCurrentUser ? _getCurrentUserColor() : widget.otherUserColor;
+    const fixedColor = Colors.green; // Set a fixed color for all avatars
+
     final userName = isCurrentUser ? _getCurrentUserName() : widget.otherUserName;
 
     return Padding(
@@ -400,7 +710,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
           if (!isCurrentUser) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: userColor,
+              backgroundColor: fixedColor, // Use the fixed color
               child: Text(
                 _getInitials(userName),
                 style: const TextStyle(
@@ -413,61 +723,82 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.7,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: isCurrentUser ? userColor : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isCurrentUser ? 20 : 4),
-                  bottomRight: Radius.circular(isCurrentUser ? 4 : 20),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
+            child: GestureDetector(
+              onTap: isCurrentUser 
+                  ? () => _showMessageOptions(context, messageId, senderId, message)
+                  : null,
+              onLongPress: isCurrentUser
+                  ? () => _showMessageOptions(context, messageId, senderId, message)
+                  : null,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    message,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: isCurrentUser ? Colors.white : Colors.black87,
-                      height: 1.4,
+                  Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.7,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatMessageTime(timestamp),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isCurrentUser
-                              ? Colors.white.withOpacity(0.7)
-                              : Colors.grey.shade600,
-                        ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isCurrentUser ? fixedColor : Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: Radius.circular(isCurrentUser ? 20 : 4),
+                        bottomRight: Radius.circular(isCurrentUser ? 4 : 20),
                       ),
-                      if (isCurrentUser) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.done_all,
-                          size: 14,
-                          color: Colors.white.withOpacity(0.7),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
                         ),
                       ],
-                    ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          message,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: isCurrentUser ? Colors.white : Colors.black87,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _formatMessageTime(timestamp),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isCurrentUser
+                                    ? Colors.white.withOpacity(0.7)
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                            if (isCurrentUser && status != 'seen') ...[
+                              const SizedBox(width: 4),
+                              _buildStatusIndicator(status), // Status indicator
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
+                  if (isCurrentUser && status == 'seen') 
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '既読', 
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.lightGreen,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -476,7 +807,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
           if (isCurrentUser)
             CircleAvatar(
               radius: 16,
-              backgroundColor: userColor,
+              backgroundColor: fixedColor, // Use the fixed color
               child: Text(
                 _getInitials(userName),
                 style: const TextStyle(
@@ -567,6 +898,17 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
   @override
   void dispose() {
+    // オフライン状態に更新
+    if (currentUser != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser!.uid)
+          .update({
+        'isOnline': false,
+        'lastSeen': FieldValue.serverTimestamp(),
+      }).catchError((e) {
+      });
+    }
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
