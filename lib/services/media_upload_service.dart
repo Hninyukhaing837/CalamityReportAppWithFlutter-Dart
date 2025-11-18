@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:typed_data'; // For web-compatible file handling
+// For web-compatible file handling
 import 'dart:io'; // For mobile file handling (dart:io is not supported on web)
 
 class MediaUploadService {

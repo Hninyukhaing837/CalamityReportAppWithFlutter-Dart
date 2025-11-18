@@ -71,7 +71,6 @@ echo **/ios/ServiceDefinitions.json >> .gitignore
 echo **/ios/Runner/GeneratedPluginRegistrant.* >> .gitignore
 
 echo # Web related >> .gitignore
-echo lib/generated_plugin_registrant.dart >> .gitignore
 
 echo # Symbolication related >> .gitignore
 echo app.*.symbols >> .gitignore

@@ -4,11 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:calamity_report/providers/theme_provider.dart';
 import 'package:calamity_report/providers/auth_provider.dart';
-import 'package:calamity_report/providers/media_provider.dart';
 import 'package:calamity_report/providers/location_provider.dart';
 import 'package:calamity_report/screens/home_screen.dart';
 import 'package:calamity_report/screens/map_screen.dart';
-import 'package:calamity_report/screens/media_screen.dart';
 
 void main() {
   setUpAll(() {
@@ -60,22 +58,6 @@ void main() {
       await tester.pump();
       expect(find.text('Map'), findsOneWidget);
     });
-
-    testWidgets('MediaScreen renders correctly', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider(create: (_) => MediaProvider()),
-          ],
-          child: const MaterialApp(
-            home: MediaScreen(),
-          ),
-        ),
-      );
-
-      await tester.pump();
-      expect(find.text('Media'), findsOneWidget);
-    });
   });
 
   group('Provider Tests', () {
@@ -88,12 +70,6 @@ void main() {
 
       themeProvider.toggleTheme();
       expect(themeProvider.themeMode, ThemeMode.light);
-    });
-
-    test('MediaProvider manages media files', () {
-      final mediaProvider = MediaProvider();
-      expect(mediaProvider.selectedMedia, isEmpty);
-      expect(mediaProvider.isUploading, false);
     });
 
     test('LocationProvider tracks state', () {

@@ -44,5 +44,12 @@
     <string>このアプリは、地図機能のために常に現在地を使用します。</string> <!-- "This app always uses your location for map functionality." -->
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>このアプリは、地図機能のために現在地を使用します。</string> <!-- "This app uses your location for map functionality." -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>remote-notification</string>
+    </array>
+    <key>FirebaseAppDelegateProxyEnabled</key>
+    <true/>
 </dict>
 </plist>

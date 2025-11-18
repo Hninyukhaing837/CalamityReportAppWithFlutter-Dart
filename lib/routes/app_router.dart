@@ -7,7 +7,7 @@ import '../screens/login_screen.dart';
 import '../screens/main_navigator.dart';
 import '../screens/home_screen.dart';
 import '../screens/map_screen.dart';
-import '../screens/media_screen.dart';
+import '../screens/media_upload_screen.dart';
 import '../screens/notification_screen.dart';
 import '../screens/settings_screen.dart'; 
 import '../screens/theme_screen.dart'; 
@@ -77,7 +77,7 @@ class AppRouter {
             routes: [
               GoRoute(
                 path: '/media',
-                builder: (context, state) => const MediaScreen(),
+                builder: (context, state) => const MediaUploadScreen(),
               ),
             ],
           ),

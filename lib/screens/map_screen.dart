@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io' show Platform; // Import for Platform
-import 'package:flutter/foundation.dart'; // Import for kIsWeb
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart'; // Import Google Maps
-import 'package:flutter/services.dart' show rootBundle; // Import for loading JSON
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:provider/provider.dart';
 import '../providers/location_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,10 +16,10 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  final Set<Marker> _markers = {}; // Define _markers to store map markers
+  final Set<Marker> _markers = {};
   late GoogleMapController _mapController;
-  BitmapDescriptor? _customMarkerIcon; // For custom marker icons
-  Marker? _currentLocationMarker; // Marker for current location
+  BitmapDescriptor? _customMarkerIcon;
+  Marker? _currentLocationMarker;
 
   @override
   void initState() {
@@ -28,19 +28,18 @@ class _MapScreenState extends State<MapScreen> {
       final locationProvider = Provider.of<LocationProvider>(context, listen: false);
       locationProvider.checkAndRequestPermissions();
     });
-    _loadPinsFromJson(); // Load pins when the screen initializes
-    _loadCustomMarkerIcon(); // Load custom marker icon
+    _loadPinsFromJson();
+    _loadCustomMarkerIcon();
     _loadMediaLocations();
   }
 
   @override
   void dispose() {
     final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-    locationProvider.stopTracking(); // Stop location tracking when the screen is disposed
+    locationProvider.stopTracking();
     super.dispose();
   }
 
-  // Load pins from the local JSON file
   Future<void> _loadPinsFromJson() async {
     try {
       final String jsonString = await rootBundle.loadString('assets/pins.json');
@@ -55,7 +54,7 @@ class _MapScreenState extends State<MapScreen> {
               title: pin['name'],
               snippet: pin['description'],
             ),
-            icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker, // Use custom marker icon
+            icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker,
           );
         }));
       });
@@ -64,15 +63,17 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Load custom marker icon
   Future<void> _loadCustomMarkerIcon() async {
-    _customMarkerIcon = await BitmapDescriptor.fromAssetImage(
-      const ImageConfiguration(size: Size(48, 48)),
-      'assets/custom_marker.png', // Path to your custom marker icon
-    );
+    try {
+      _customMarkerIcon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/custom_marker.png',
+      );
+    } catch (e) {
+      print('Error loading custom marker: $e');
+    }
   }
 
-  // Update current location marker
   void _updateCurrentLocationMarker(LocationProvider locationProvider) {
     if (locationProvider.currentLocation != null &&
         locationProvider.currentLocation!.latitude != null &&
@@ -81,23 +82,27 @@ class _MapScreenState extends State<MapScreen> {
       final double longitude = locationProvider.currentLocation!.longitude!;
 
       setState(() {
+        // Remove old current location marker if exists
+        _markers.removeWhere((marker) => marker.markerId.value == 'current_location');
+        
         _currentLocationMarker = Marker(
           markerId: const MarkerId('current_location'),
           position: LatLng(latitude, longitude),
-          infoWindow: const InfoWindow(title: '現在地'), // "Current Location"
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue), // Blue marker for current location
+          infoWindow: const InfoWindow(title: '現在地'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         );
         _markers.add(_currentLocationMarker!);
       });
 
       // Move the map camera to the current location
-      _mapController.animateCamera(CameraUpdate.newLatLng(LatLng(latitude, longitude)));
+      _mapController.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(latitude, longitude), 15),
+      );
     } else {
       print('Error: Current location is null or incomplete.');
     }
   }
 
-  // Share current location
   void _shareCurrentLocation(LocationProvider locationProvider) {
     if (locationProvider.currentLocation != null &&
         locationProvider.currentLocation!.latitude != null &&
@@ -106,32 +111,37 @@ class _MapScreenState extends State<MapScreen> {
       final longitude = locationProvider.currentLocation!.longitude!;
       final locationUrl = 'https://www.google.com/maps?q=$latitude,$longitude';
 
-      // Share location URL (you can use a sharing plugin like `share_plus`)
       print('Share this location: $locationUrl');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現在地を共有しました: $locationUrl')), // "Shared current location"
+        SnackBar(content: Text('現在地を共有しました: $locationUrl')),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('現在地が利用できません')), // "Current location not available"
+        const SnackBar(content: Text('現在地が利用できません')),
       );
     }
   }
 
-  // Load media locations from Firestore
   Future<void> _loadMediaLocations() async {
     try {
       final mediaDocs = await FirebaseFirestore.instance.collection('media').get();
       for (var doc in mediaDocs.docs) {
         final data = doc.data();
-        final location = data['location'];
-        if (location != null) {
+        final latitude = data['latitude'];
+        final longitude = data['longitude'];
+        
+        if (latitude != null && longitude != null) {
           final marker = Marker(
             markerId: MarkerId(doc.id),
-            position: LatLng(location['latitude'], location['longitude']),
+            position: LatLng(latitude, longitude),
             infoWindow: InfoWindow(
               title: data['incidentCase'] ?? 'メディア',
               snippet: data['type'],
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              data['type'] == 'image' 
+                ? BitmapDescriptor.hueGreen 
+                : BitmapDescriptor.hueRed,
             ),
           );
           setState(() {
@@ -145,59 +155,134 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget buildMap(LocationProvider locationProvider) {
-    if (kIsWeb) {
-      // Handle web platform
+    if (kIsWeb || Platform.isWindows) {
+      // Handle web and Windows platforms with info message and location display
       return Container(
         margin: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.grey.shade200,
+          color: Colors.blue.shade50,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue.shade200),
         ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.map, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text(
-                'ここにGoogleマップが表示されます', // "The map will be displayed here"
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else if (Platform.isWindows) {
-      // Handle Windows platform
-      return Container(
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.map, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text(
-                'ここにGoogleマップが表示されます', // "The map will be displayed here"
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 24),
+                Icon(Icons.info_outline, size: 64, color: Colors.blue.shade700),
+                const SizedBox(height: 16),
+                Text(
+                  'マップ表示は${kIsWeb ? "Web" : "Windows"}ではサポートされていません',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade900,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'モバイルアプリでご利用ください',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                // Show location info if available
+                if (locationProvider.currentLocation != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.location_on, 
+                              size: 20, 
+                              color: Colors.blue.shade700,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              '現在の位置情報:',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '緯度: ${locationProvider.currentLocation!.latitude?.toStringAsFixed(6)}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '経度: ${locationProvider.currentLocation!.longitude?.toStringAsFixed(6)}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        if (locationProvider.currentLocation!.accuracy != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '精度: ${locationProvider.currentLocation!.accuracy?.toStringAsFixed(2)} m',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            '位置情報を取得するには「現在地を取得」ボタンを押してください',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       );
     } else {
       // Handle mobile platforms (Android/iOS)
-      _updateCurrentLocationMarker(locationProvider); // Update current location marker
+      if (locationProvider.currentLocation != null) {
+        _updateCurrentLocationMarker(locationProvider);
+      }
       return GoogleMap(
         initialCameraPosition: const CameraPosition(
           target: LatLng(35.6895, 139.6917), // Default to Tokyo
           zoom: 10,
         ),
-        markers: _markers, // Use the markers on the map
+        markers: _markers,
+        myLocationEnabled: true,
+        myLocationButtonEnabled: true,
+        mapType: MapType.normal,
         onMapCreated: (GoogleMapController controller) {
           _mapController = controller;
         },
@@ -209,7 +294,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('地図と位置情報'), // "Map & Location"
+        title: const Text('地図と位置情報'),
       ),
       body: Consumer<LocationProvider>(
         builder: (context, locationProvider, child) {
@@ -239,7 +324,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
 
-              // Location info
+              // Location info card
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -251,7 +336,7 @@ class _MapScreenState extends State<MapScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              '現在地', // "Current Location"
+                              '現在地',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -263,20 +348,20 @@ class _MapScreenState extends State<MapScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '緯度: ${locationProvider.currentLocation!.latitude?.toStringAsFixed(6)}', // "Latitude"
+                                    '緯度: ${locationProvider.currentLocation!.latitude?.toStringAsFixed(6)}',
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    '経度: ${locationProvider.currentLocation!.longitude?.toStringAsFixed(6)}', // "Longitude"
+                                    '経度: ${locationProvider.currentLocation!.longitude?.toStringAsFixed(6)}',
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    '精度: ${locationProvider.currentLocation!.accuracy?.toStringAsFixed(2)} m', // "Accuracy"
+                                    '精度: ${locationProvider.currentLocation!.accuracy?.toStringAsFixed(2)} m',
                                   ),
                                 ],
                               )
                             else
-                              const Text('位置情報が利用できません'), // "No location data available"
+                              const Text('位置情報が利用できません'),
                           ],
                         ),
                       ),
@@ -284,13 +369,15 @@ class _MapScreenState extends State<MapScreen> {
                     const SizedBox(height: 16),
 
                     // Action buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
                       children: [
                         ElevatedButton.icon(
                           onPressed: () => locationProvider.getCurrentLocation(),
                           icon: const Icon(Icons.my_location),
-                          label: const Text('現在地を取得'), // "Get Location"
+                          label: const Text('現在地を取得'),
                         ),
                         ElevatedButton.icon(
                           onPressed: locationProvider.isTracking
@@ -303,8 +390,8 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                           label: Text(
                             locationProvider.isTracking
-                                ? '追跡を停止' // "Stop Tracking"
-                                : '追跡を開始', // "Start Tracking"
+                                ? '追跡を停止'
+                                : '追跡を開始',
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: locationProvider.isTracking
@@ -316,7 +403,7 @@ class _MapScreenState extends State<MapScreen> {
                         ElevatedButton.icon(
                           onPressed: () => _shareCurrentLocation(locationProvider),
                           icon: const Icon(Icons.share),
-                          label: const Text('現在地を共有'), // "Share Location"
+                          label: const Text('現在地を共有'),
                         ),
                       ],
                     ),
@@ -324,7 +411,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
 
-              // Map placeholder or actual map
+              // Map or placeholder
               Expanded(
                 child: buildMap(locationProvider),
               ),

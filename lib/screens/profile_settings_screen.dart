@@ -311,7 +311,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                           const SizedBox(height: 12),
                           _buildInfoRow(
                             'ユーザーID',
-                            user?.uid.substring(0, 16) ?? '' + '...',
+                            user?.uid.substring(0, 16) ?? '' '...',
                           ),
                           const SizedBox(height: 12),
                           _buildInfoRow(
