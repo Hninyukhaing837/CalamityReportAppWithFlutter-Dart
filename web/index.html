@@ -54,18 +54,18 @@
       if (isSecureContext) {
         navigator.serviceWorker.register('/firebase-messaging-sw.js')
           .then((registration) => {
-            console.log('✅ Service Worker registered:', registration);
+            console.log('Service Worker registered:', registration);
           })
           .catch((error) => {
-            console.warn('⚠️ Service Worker registration failed:', error);
-            console.info('ℹ️ This is expected for mobile testing. FCM will work on mobile devices.');
+            console.warn('Service Worker registration failed:', error);
+            console.info('This is expected for mobile testing. FCM will work on mobile devices.');
           });
       } else {
-        console.warn('⚠️ Service Worker requires HTTPS or localhost');
-        console.info('ℹ️ FCM will work on mobile devices');
+        console.warn('Service Worker requires HTTPS or localhost');
+        console.info('FCM will work on mobile devices');
       }
     } else {
-      console.info('ℹ️ Service Worker not supported in this environment');
+      console.info('Service Worker not supported in this environment');
     }
   </script>
 </body>

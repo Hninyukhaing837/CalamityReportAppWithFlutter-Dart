@@ -1,0 +1,53 @@
+2025/11/19-18:18:05.744 6278 Creating DB C:\Users\HNINYU~1\AppData\Local\Temp\flutter_tools.530e9c6b\flutter_tools_chrome_device.f8474156\Default\IndexedDB\http_localhost_49917.indexeddb.leveldb since it was missing.
+2025/11/19-18:18:05.854 6278 Reusing MANIFEST C:\Users\HNINYU~1\AppData\Local\Temp\flutter_tools.530e9c6b\flutter_tools_chrome_device.f8474156\Default\IndexedDB\http_localhost_49917.indexeddb.leveldb/MANIFEST-000001
+2025/11/19-18:18:05.914 1954 Level-0 table #5: started
+2025/11/19-18:18:05.944 1954 Level-0 table #5: 1264 bytes OK
+2025/11/19-18:18:05.959 1954 Delete type=0 #3
+2025/11/19-18:18:05.961 1954 Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/11/19-18:18:07.273 1954 Level-0 table #7: started
+2025/11/19-18:18:07.304 1954 Level-0 table #7: 2043 bytes OK
+2025/11/19-18:18:07.316 1954 Delete type=0 #4
+2025/11/19-18:18:07.318 71e0 Manual compaction at level-0 from '\x00\x04\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/11/19-18:29:25.848 1954 Level-0 table #9: started
+2025/11/19-18:29:25.887 1954 Level-0 table #9: 7479 bytes OK
+2025/11/19-18:29:25.895 1954 Delete type=0 #6
+2025/11/19-18:29:25.897 71e0 Manual compaction at level-0 from '\x00\x07\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x08\x00\x00\x00' @ 0 : 0; will stop at '\x00\x07\x00\x00\x05' @ 303 : 1
+2025/11/19-18:29:25.897 71e0 Compacting 1@0 + 1@1 files
+2025/11/19-18:29:25.918 71e0 Generated table #10@0: 129 keys, 5401 bytes
+2025/11/19-18:29:25.918 71e0 Compacted 1@0 + 1@1 files => 5401 bytes
+2025/11/19-18:29:25.922 71e0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2025/11/19-18:29:25.923 71e0 Delete type=2 #9
+2025/11/19-18:29:25.925 71e0 Manual compaction at level-0 from '\x00\x07\x00\x00\x05' @ 303 : 1 .. '\x00\x08\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/11/19-19:05:49.098 1954 Level-0 table #12: started
+2025/11/19-19:05:49.126 1954 Level-0 table #12: 648 bytes OK
+2025/11/19-19:05:49.134 1954 Delete type=2 #7
+2025/11/19-19:05:49.134 1954 Delete type=0 #8
+2025/11/19-19:05:49.138 71e0 Manual compaction at level-0 from '\x00\x08\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x09\x00\x00\x00' @ 0 : 0; will stop at '\x00\x08\x00\x00\x05' @ 322 : 1
+2025/11/19-19:05:49.138 71e0 Compacting 1@0 + 1@1 files
+2025/11/19-19:05:49.163 71e0 Generated table #13@0: 133 keys, 5466 bytes
+2025/11/19-19:05:49.164 71e0 Compacted 1@0 + 1@1 files => 5466 bytes
+2025/11/19-19:05:49.173 71e0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2025/11/19-19:05:49.174 71e0 Delete type=2 #12
+2025/11/19-19:05:49.176 71e0 Manual compaction at level-0 from '\x00\x08\x00\x00\x05' @ 322 : 1 .. '\x00\x09\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/11/19-19:14:38.244 1954 Level-0 table #15: started
+2025/11/19-19:14:38.261 1954 Level-0 table #15: 3857 bytes OK
+2025/11/19-19:14:38.264 1954 Delete type=2 #10
+2025/11/19-19:14:38.264 1954 Delete type=0 #11
+2025/11/19-19:14:38.266 71e0 Manual compaction at level-0 from '\x00\x09\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0a\x00\x00\x00' @ 0 : 0; will stop at '\x00\x09\x00\x00\x05' @ 353 : 1
+2025/11/19-19:14:38.266 71e0 Compacting 1@0 + 1@1 files
+2025/11/19-19:14:38.291 71e0 Generated table #16@0: 145 keys, 5690 bytes
+2025/11/19-19:14:38.291 71e0 Compacted 1@0 + 1@1 files => 5690 bytes
+2025/11/19-19:14:38.292 71e0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2025/11/19-19:14:38.292 71e0 Delete type=2 #15
+2025/11/19-19:14:38.293 71e0 Manual compaction at level-0 from '\x00\x09\x00\x00\x05' @ 353 : 1 .. '\x00\x0a\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/11/19-19:14:39.255 71e0 Level-0 table #18: started
+2025/11/19-19:14:39.273 71e0 Level-0 table #18: 3382 bytes OK
+2025/11/19-19:14:39.274 71e0 Delete type=2 #13
+2025/11/19-19:14:39.275 71e0 Delete type=0 #14
+2025/11/19-19:14:39.276 71e0 Manual compaction at level-0 from '\x00\x0a\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0a\x00\x00\x05' @ 398 : 1
+2025/11/19-19:14:39.276 71e0 Compacting 1@0 + 1@1 files
+2025/11/19-19:14:39.297 71e0 Generated table #19@0: 153 keys, 5715 bytes
+2025/11/19-19:14:39.297 71e0 Compacted 1@0 + 1@1 files => 5715 bytes
+2025/11/19-19:14:39.299 71e0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2025/11/19-19:14:39.300 71e0 Delete type=2 #18
+2025/11/19-19:14:39.301 71e0 Manual compaction at level-0 from '\x00\x0a\x00\x00\x05' @ 398 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at (end)
