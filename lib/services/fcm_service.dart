@@ -41,7 +41,7 @@ class FCMService {
   /// Initialize FCM - Call this in main.dart
   Future<void> initialize() async {
     try {
-      print('🚀 Initializing FCM Service...');
+      print('Initializing FCM Service...');
       
       _firebaseMessaging = FirebaseMessaging.instance;
 
@@ -59,7 +59,7 @@ class FCMService {
         criticalAlert: false,
       );
 
-      print('✅ Notification permission: ${settings.authorizationStatus}');
+      print('Notification permission: ${settings.authorizationStatus}');
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
@@ -438,20 +438,32 @@ class FCMService {
   /// Subscribe to FCM topic
   Future<void> subscribeToTopic(String topic) async {
     try {
+      // ADD: Check if web platform
+    if (kIsWeb) {
+      print('Topic subscription not supported on web');
+      return;
+    }
+      
       await _firebaseMessaging.subscribeToTopic(topic);
-      print('✅ Subscribed to topic: $topic');
+      print('Subscribed to topic: $topic');
     } catch (e) {
-      print('❌ Error subscribing to topic: $e');
+      print('Error subscribing to topic: $e');
     }
   }
 
-  /// Unsubscribe from FCM topic
+  // Unsubscribe from FCM topic
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
+      // Check if web platform
+      if (kIsWeb) {
+        print('Topic unsubscription not supported on web');
+        return;
+      }
+      
       await _firebaseMessaging.unsubscribeFromTopic(topic);
-      print('✅ Unsubscribed from topic: $topic');
+      print('Unsubscribed from topic: $topic');
     } catch (e) {
-      print('❌ Error unsubscribing from topic: $e');
+      print('Error unsubscribing from topic: $e');
     }
   }
 

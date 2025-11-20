@@ -6,14 +6,14 @@ import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/location_provider.dart';
 import 'routes/app_router.dart';
-import 'services/fcm_service.dart'; // Import FCM Service
+import 'services/fcm_service.dart'; 
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
+  // Initialize Firebase1
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

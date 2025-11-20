@@ -1,5 +1,5 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/fcm_service.dart';
@@ -29,7 +29,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     _subscribeToTopics();
   }
 
-  /// Load notification preferences from Firestore
+  //Load notification preferences from Firestore
   Future<void> _loadNotificationPreferences() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -57,7 +57,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  /// Save notification preference to Firestore
+  //Save notification preference to Firestore
   Future<void> _saveNotificationPreference(String key, bool value) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -74,7 +74,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  /// Subscribe to relevant FCM topics
+  //Subscribe to relevant FCM topics
   Future<void> _subscribeToTopics() async {
     if (_emergencyAlertsEnabled) {
       await _fcmService.subscribeToTopic('emergency');
@@ -93,7 +93,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         slivers: [
           SliverAppBar.medium(
             title: const Text('通知設定'),
-            backgroundColor: Colors.blue.shade700,
+            backgroundColor: const Color.fromARGB(255, 156, 200, 244),
             foregroundColor: Colors.white,
           ),
           SliverToBoxAdapter(
@@ -166,7 +166,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             subtitle: const Text('アプリからの通知を受信します'),
             value: _notificationsEnabled,
-            activeColor: Colors.blue.shade700,
+            activeThumbColor: Colors.blue.shade700,
             secondary: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -195,13 +195,45 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
               await _saveNotificationPreference('notificationsEnabled', value);
 
+              if (!value) {
+                // Unsubscribe from all topics
+                await _fcmService.unsubscribeFromTopic('emergency');
+                await _fcmService.unsubscribeFromTopic('media_updates');
+                
+                // Delete token from device (prevents ALL notifications)
+                try {
+                  await FirebaseMessaging.instance.deleteToken();
+                  print('FCM token deleted from device');
+                } catch (e) {
+                  print('Error deleting device token: $e');
+                }
+                
+                // Delete FCM token from Firestore
+                final user = _auth.currentUser;
+                if (user != null) {
+                  try {
+                    await _firestore.collection('users').doc(user.uid).update({
+                      'fcmToken': FieldValue.delete(),
+                      'notificationsEnabled': false,
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    });
+                    print('FCM token deleted from Firestore');
+                  } catch (e) {
+                    print('Error deleting FCM token: $e');
+                  }
+                }
+              } else {
+                // Re-enable: Request new token
+                await _fcmService.initialize();
+              }
+
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       value 
-                          ? '✅ 通知が有効になりました' 
-                          : '🔕 通知が無効になりました\n履歴から確認できます',
+                          ? '通知が有効になりました' 
+                          : '通知が無効になりました\n履歴から確認できます',
                     ),
                     backgroundColor: value ? Colors.green : Colors.grey,
                     duration: const Duration(seconds: 3),
@@ -210,33 +242,33 @@ class _NotificationScreenState extends State<NotificationScreen> {
               }
             },
           ),
-          if (!_notificationsEnabled)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '通知は履歴に保存されます。緊急通知は常に表示されます。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange.shade900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // if (!_notificationsEnabled)
+          //   Padding(
+          //     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          //     child: Container(
+          //       padding: const EdgeInsets.all(12),
+          //       decoration: BoxDecoration(
+          //         color: Colors.orange.shade50,
+          //         borderRadius: BorderRadius.circular(8),
+          //         border: Border.all(color: Colors.orange.shade200),
+          //       ),
+          //       // child: Row(
+          //       //   children: [
+          //       //     Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+          //       //     const SizedBox(width: 12),
+          //       //     Expanded(
+          //       //       child: Text(
+          //       //         '通知は履歴に保存されます。緊急通知は常に表示されます。',
+          //       //         style: TextStyle(
+          //       //           fontSize: 12,
+          //       //           color: Colors.orange.shade900,
+          //       //         ),
+          //       //       ),
+          //       //     ),
+          //       //   ],
+          //       // ),
+          //     ),
+          //   ),
         ],
       ),
     );
@@ -257,7 +289,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             subtitle: const Text('災害情報などの重要な通知を受信します'),
             value: _emergencyAlertsEnabled && _notificationsEnabled,
-            activeColor: Colors.red.shade700,
+            activeThumbColor: Colors.red.shade700,
             secondary: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -311,7 +343,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             subtitle: const Text('新しい画像や動画がアップロードされた時に通知します'),
             value: _mediaUpdatesEnabled && _notificationsEnabled,
-            activeColor: Colors.green.shade700,
+            activeThumbColor: Colors.green.shade700,
             secondary: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
