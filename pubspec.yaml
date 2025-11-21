@@ -20,10 +20,12 @@ dependencies:
   
   # Media & Location
   google_maps_flutter: ^2.9.0
+  google_maps_flutter_web: ^0.5.4+2
   location: ^5.0.0
   image_picker: ^1.1.2
   video_player: ^2.9.1
   chewie: ^1.8.3
+  http: ^1.1.0
   
   # Audio
   flutter_sound: ^9.2.13
@@ -41,6 +43,7 @@ dependencies:
   firebase_messaging: ^16.0.4
   cloud_firestore: 6.1.0
   cached_network_image: ^3.3.0
+  fl_chart: ^0.65.0
 
   # Photo View
   photo_view: ^0.14.0

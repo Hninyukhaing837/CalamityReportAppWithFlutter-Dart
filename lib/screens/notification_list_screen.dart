@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';  
 
 class NotificationListScreen extends StatefulWidget {
   const NotificationListScreen({super.key});
@@ -24,7 +24,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   List<DocumentSnapshot> _currentNotifications = [];
   List<DocumentSnapshot> _allNotifications = [];
   static const int _pageSize = 10;
-  DocumentSnapshot? _lastDocument;
   bool _hasMore = true;
   bool _isLoadingMore = false;
   int _currentPage = 1;
@@ -173,6 +172,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       case 'pinned':
         query = query.where('pinned', isEqualTo: true);
         break;
+      case 'report':
+        query = query.where('type', isEqualTo: 'report');
+        break;
     }
 
     // Date filters
@@ -230,7 +232,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                   // Reset pagination
                   _currentPage = 1; 
                   _hasMore = true;
-                  _lastDocument = null;
                   _currentNotifications.clear();
                   _allNotifications.clear(); 
                 });
@@ -298,6 +299,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       case 'unread':
         query = query.where('read', isEqualTo: false);
         break;
+      case 'report':
+        query = query.where('type', isEqualTo: 'report');
+      break;
       case 'all':
         // Count all notifications
         break;
@@ -320,7 +324,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     _hasMore = _allNotifications.length > _currentNotifications.length;
     
     if (_currentNotifications.isNotEmpty) {
-      _lastDocument = _currentNotifications.last;
     }
 
     final pinnedNotifications = _currentNotifications.where((doc) {
