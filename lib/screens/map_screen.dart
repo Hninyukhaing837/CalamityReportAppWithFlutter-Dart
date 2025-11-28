@@ -17,24 +17,36 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final Set<Marker> _markers = {};
-  late GoogleMapController _mapController;
+  GoogleMapController? _mapController;
   BitmapDescriptor? _customMarkerIcon;
   Marker? _currentLocationMarker;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-      locationProvider.checkAndRequestPermissions();
+      _initializeMap();
     });
-    _loadPinsFromJson();
-    _loadCustomMarkerIcon();
-    _loadMediaLocations();
+  }
+
+  Future<void> _initializeMap() async {
+    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+    await locationProvider.checkAndRequestPermissions();
+    await _loadCustomMarkerIcon();
+    await _loadPinsFromJson();
+    await _loadMediaLocations();
+    
+    if (mounted) {
+      setState(() {
+        _isInitialized = true;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _mapController?.dispose();
     final locationProvider = Provider.of<LocationProvider>(context, listen: false);
     locationProvider.stopTracking();
     super.dispose();
@@ -45,19 +57,23 @@ class _MapScreenState extends State<MapScreen> {
       final String jsonString = await rootBundle.loadString('assets/pins.json');
       final List<dynamic> pinData = json.decode(jsonString);
 
-      setState(() {
-        _markers.addAll(pinData.map((pin) {
-          return Marker(
-            markerId: MarkerId(pin['id'].toString()),
-            position: LatLng(pin['latitude'], pin['longitude']),
-            infoWindow: InfoWindow(
-              title: pin['name'],
-              snippet: pin['description'],
-            ),
-            icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker,
-          );
-        }));
-      });
+      final newMarkers = pinData.map((pin) {
+        return Marker(
+          markerId: MarkerId(pin['id'].toString()),
+          position: LatLng(pin['latitude'], pin['longitude']),
+          infoWindow: InfoWindow(
+            title: pin['name'],
+            snippet: pin['description'],
+          ),
+          icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker,
+        );
+      }).toSet();
+
+      if (mounted) {
+        setState(() {
+          _markers.addAll(newMarkers);
+        });
+      }
     } catch (e) {
       print('Error loading pins: $e');
     }
@@ -65,10 +81,15 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadCustomMarkerIcon() async {
     try {
-      _customMarkerIcon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/custom_marker.png',
-      );
+      try {
+         _customMarkerIcon = await BitmapDescriptor.fromAssetImage(
+          const ImageConfiguration(size: Size(48, 48)),
+          'assets/custom_marker.png',
+        );
+      } catch(e) {
+        print("Custom marker not found, using default: $e");
+        _customMarkerIcon = BitmapDescriptor.defaultMarker; 
+      }
     } catch (e) {
       print('Error loading custom marker: $e');
     }
@@ -81,25 +102,25 @@ class _MapScreenState extends State<MapScreen> {
       final double latitude = locationProvider.currentLocation!.latitude!;
       final double longitude = locationProvider.currentLocation!.longitude!;
 
-      setState(() {
-        // Remove old current location marker if exists
-        _markers.removeWhere((marker) => marker.markerId.value == 'current_location');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         
-        _currentLocationMarker = Marker(
-          markerId: const MarkerId('current_location'),
-          position: LatLng(latitude, longitude),
-          infoWindow: const InfoWindow(title: '現在地'),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        );
-        _markers.add(_currentLocationMarker!);
-      });
+        setState(() {
+          _markers.removeWhere((marker) => marker.markerId.value == 'current_location');
+          
+          _currentLocationMarker = Marker(
+            markerId: const MarkerId('current_location'),
+            position: LatLng(latitude, longitude),
+            infoWindow: const InfoWindow(title: '現在地'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          );
+          _markers.add(_currentLocationMarker!);
+        });
 
-      // Move the map camera to the current location
-      _mapController.animateCamera(
-        CameraUpdate.newLatLngZoom(LatLng(latitude, longitude), 15),
-      );
-    } else {
-      print('Error: Current location is null or incomplete.');
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLngZoom(LatLng(latitude, longitude), 15),
+        );
+      });
     }
   }
 
@@ -125,6 +146,8 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _loadMediaLocations() async {
     try {
       final mediaDocs = await FirebaseFirestore.instance.collection('media').get();
+      final newMarkers = <Marker>{};
+      
       for (var doc in mediaDocs.docs) {
         final data = doc.data();
         final latitude = data['latitude'];
@@ -144,10 +167,14 @@ class _MapScreenState extends State<MapScreen> {
                 : BitmapDescriptor.hueRed,
             ),
           );
-          setState(() {
-            _markers.add(marker);
-          });
+          newMarkers.add(marker);
         }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _markers.addAll(newMarkers);
+        });
       }
     } catch (e) {
       print('Error loading media locations: $e');
@@ -156,7 +183,6 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget buildMap(LocationProvider locationProvider) {
     if (kIsWeb || Platform.isWindows) {
-      // Handle web and Windows platforms with info message and location display
       return Container(
         margin: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -191,7 +217,6 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 const SizedBox(height: 24),
                 
-                // Show location info if available
                 if (locationProvider.currentLocation != null)
                   Container(
                     width: double.infinity,
@@ -270,10 +295,10 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
     } else {
-      // Handle mobile platforms (Android/iOS)
-      if (locationProvider.currentLocation != null) {
+      if (locationProvider.currentLocation != null && _isInitialized) {
         _updateCurrentLocationMarker(locationProvider);
       }
+      
       return GoogleMap(
         initialCameraPosition: const CameraPosition(
           target: LatLng(35.6895, 139.6917), // Default to Tokyo
@@ -300,7 +325,6 @@ class _MapScreenState extends State<MapScreen> {
         builder: (context, locationProvider, child) {
           return Column(
             children: [
-              // Error message banner
               if (locationProvider.errorMessage != null)
                 Container(
                   width: double.infinity,
@@ -324,26 +348,26 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
 
-              // Location info card
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '現在地',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+              // CORRECTED LOGIC: Show card ONLY if location exists
+              if (locationProvider.currentLocation != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '現在地',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            if (locationProvider.currentLocation != null)
+                              const SizedBox(height: 16),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -360,56 +384,68 @@ class _MapScreenState extends State<MapScreen> {
                                   ),
                                 ],
                               )
-                            else
-                              const Text('位置情報が利用できません'),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      // Buttons inside the conditional block if you want them hidden too, 
+                      // BUT usually buttons should remain visible to fetch location.
+                      // If buttons should remain visible, they must be OUTSIDE this if block.
+                      // Moving buttons OUTSIDE for usability.
+                    ],
+                  ),
+                ),
+              
+              // Buttons are now always visible so user can retry fetching location
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        await locationProvider.getCurrentLocation();
+                        if (mounted && locationProvider.currentLocation != null) {
+                          _updateCurrentLocationMarker(locationProvider);
+                        }
+                      },
+                      icon: const Icon(Icons.my_location),
+                      label: const Text('現在地を取得'),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Action buttons
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () => locationProvider.getCurrentLocation(),
-                          icon: const Icon(Icons.my_location),
-                          label: const Text('現在地を取得'),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: locationProvider.isTracking
-                              ? () => locationProvider.stopTracking()
-                              : () => locationProvider.startTracking(),
-                          icon: Icon(
-                            locationProvider.isTracking
-                                ? Icons.stop
-                                : Icons.play_arrow,
-                          ),
-                          label: Text(
-                            locationProvider.isTracking
-                                ? '追跡を停止'
-                                : '追跡を開始',
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: locationProvider.isTracking
-                                ? Colors.red
-                                : Colors.green,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => _shareCurrentLocation(locationProvider),
-                          icon: const Icon(Icons.share),
-                          label: const Text('現在地を共有'),
-                        ),
-                      ],
+                    ElevatedButton.icon(
+                      onPressed: locationProvider.isTracking
+                          ? () => locationProvider.stopTracking()
+                          : () => locationProvider.startTracking(),
+                      icon: Icon(
+                        locationProvider.isTracking
+                            ? Icons.stop
+                            : Icons.play_arrow,
+                      ),
+                      label: Text(
+                        locationProvider.isTracking
+                            ? '追跡を停止'
+                            : '追跡を開始',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: locationProvider.isTracking
+                            ? Colors.red
+                            : Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _shareCurrentLocation(locationProvider),
+                      icon: const Icon(Icons.share),
+                      label: const Text('現在地を共有'),
                     ),
                   ],
                 ),
               ),
+              
+              const SizedBox(height: 16),
 
               // Map or placeholder
               Expanded(

@@ -1,77 +1,27 @@
 {
-  "name": "calamity-report-functions",
-  "version": "1.0.0",
-  "description": "Cloud Functions for Calamity Report App with FCM image notifications",
+  "name": "functions",
   "scripts": {
-    "serve": "firebase emulators:start",
-    "serve:functions": "firebase emulators:start --only functions",
-    "serve:all": "firebase emulators:start --only functions,firestore,storage,auth",
-    "serve:ui": "firebase emulators:start --only functions,firestore,storage --ui",
-    
-    "deploy": "firebase deploy --only functions",
-    "deploy:onImageUpload": "firebase deploy --only functions:onImageUpload",
-    "deploy:sendImageNotification": "firebase deploy --only functions:sendImageNotification",
-    "deploy:all": "firebase deploy",
-    
-    "logs": "firebase functions:log --follow",
-    "logs:onImageUpload": "firebase functions:log --only onImageUpload --follow",
-    "logs:sendImageNotification": "firebase functions:log --only sendImageNotification --follow",
-    "logs:recent": "firebase functions:log --lines 100",
-    "logs:errors": "firebase functions:log --lines 100 | grep ERROR",
-    
-    "test": "mocha test/**/*.test.js",
-    "test:watch": "mocha test/**/*.test.js --watch",
-    "test:coverage": "nyc mocha test/**/*.test.js",
-    
-    "shell": "firebase functions:shell",
-    "build": "npm run lint && npm run build:functions",
-    "build:functions": "tsc",
-    
-    "lint": "eslint \"src/**/*.{js,ts}\"",
-    "lint:fix": "eslint \"src/**/*.{js,ts}\" --fix",
-    
-    "functions:list": "firebase functions:list",
-    "functions:config:get": "firebase functions:config:get",
-    
-    "emulator:export": "firebase emulators:export ./emulator-data",
-    "emulator:import": "firebase emulators:start --import=./emulator-data",
-    
-    "test:storage": "node scripts/test-storage-trigger.js",
-    "test:callable": "node scripts/test-callable-function.js",
-    "test:fcm": "node scripts/test-fcm-notification.js",
-    
-    "clean": "rm -rf lib/",
-    "prebuild": "npm run clean",
-    
-    "dev": "npm run serve:all",
-    "start": "npm run serve"
+    "lint": "eslint --ext .ts src/ --fix",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "logs": "firebase functions:log"
   },
   "engines": {
-    "node": "18"
+    "node": "20"
   },
   "main": "lib/index.js",
   "dependencies": {
     "firebase-admin": "^12.0.0",
-    "firebase-functions": "^4.5.0"
+    "firebase-functions": "^4.9.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "eslint": "^8.15.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.50.0",
     "eslint-config-google": "^0.14.0",
-    "firebase-functions-test": "^3.1.0",
-    "mocha": "^10.0.0",
-    "nyc": "^15.1.0",
-    "typescript": "^5.0.0"
+    "eslint-plugin-import": "^2.29.0",
+    "typescript": "^5.2.2"
   },
-  "private": true,
-  "keywords": [
-    "firebase",
-    "functions",
-    "fcm",
-    "push-notifications",
-    "cloud-storage",
-    "disaster-management"
-  ],
-  "author": "Hnin Yu Khaing",
-  "license": "MIT"
+  "private": true
 }

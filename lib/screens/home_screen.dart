@@ -9,9 +9,12 @@ import 'package:go_router/go_router.dart';
 import '../screens/settings_screen.dart';
 import '../screens/notification_screen.dart';
 import '../screens/notification_list_screen.dart';
+import '../screens/nearby_disasters_screen.dart';
+import '../screens/members_locations_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/weather_service.dart';
+import '../services/geohash_service.dart';
 import '../widgets/platform_map.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -47,6 +50,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _fabController.forward();
     
     _getCurrentLocation();
+
+    // Update location for nearby detection
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateUserLocationInFirestore();
+    });
   }
 
   @override
@@ -143,6 +151,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         onRefresh: () async {
           setState(() {});
           await _getCurrentLocation();
+          await _updateUserLocationInFirestore();
           await Future.delayed(const Duration(milliseconds: 500));
         },
         child: LayoutBuilder(
@@ -171,16 +180,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       _buildCompactNotificationsPreview(user),
                       const SizedBox(height: 12),
 
-                      // Quick Actions Grid
-                      _buildQuickActions(context, user),
-                      const SizedBox(height: 12),
-
                       // Emergency Quick Actions
                       _buildEmergencyQuickActions(context, user),
                       const SizedBox(height: 12),
 
                       // Statistics Dashboard
                       _buildCompactStatisticsDashboard(user),
+                      const SizedBox(height: 12),
+
+                       // Quick Actions Grid
+                      _buildQuickActions(context, user),
                       const SizedBox(height: 12),
 
                       // Disaster Map Widget
@@ -699,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   // Build quick action items list
   List<Widget> _buildQuickActionItems(BuildContext context) {
     return [
-      _buildCompactQuickActionCard(
+      _buildQuickActionCard(
         icon: Icons.contact_emergency,
         label: '緊急連絡先',
         color: Colors.red,
@@ -707,7 +716,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _showEmergencyContactsDialog(context);
         },
       ),
-      _buildCompactQuickActionCard(
+      _buildQuickActionCard(
         icon: Icons.notifications_active,
         label: '通知設定',
         color: Colors.orange,
@@ -720,15 +729,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         },
       ),
-      _buildCompactQuickActionCard(
-        icon: Icons.location_on,
-        label: '近くの災害',
-        color: Colors.blue,
+      _buildQuickActionCard(
+        context: context,
+        icon: Icons.warning_amber,
+        label: '近隣の災害',
+        color: Colors.red,
+        subtitle: '半径5km以内',
         onTap: () {
-          _showNearbyDisastersDialog(context);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const NearbyDisastersScreen()),
+          );
         },
       ),
-      _buildCompactQuickActionCard(
+      _buildQuickActionCard(
         icon: Icons.help,
         label: 'ヘルプ',
         color: Colors.green,
@@ -736,19 +750,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _showHelpSupportDialog(context);
         },
       ),
-      _buildCompactQuickActionCard(
-        icon: Icons.people_alt,
+      _buildQuickActionCard(
+        context: context,
+        icon: Icons.people_outline,
         label: 'メンバー位置',
-        color: Colors.purple,
+        color: Colors.green,
+        subtitle: '近隣のユーザー',
         onTap: () {
-          _showTeamMembersLocationDialog(context);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const MembersLocationsScreen()),
+          );
         },
       ),
     ];
   }
 
-  // Compact Quick Action Card Widget
-  Widget _buildCompactQuickActionCard({
+  // Quick Action Card Widget
+  Widget _buildQuickActionCard({
+    BuildContext? context,
+    String? subtitle,
     required IconData icon,
     required String label,
     required Color color,
@@ -2292,7 +2313,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: selectedPriority,
+                  initialValue: selectedPriority,
                   items: const [
                     DropdownMenuItem(
                       value: 'high',
@@ -2380,19 +2401,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           print('位置情報取得エラー: $e');
         }
 
+        String? geohash;
+        if (position != null) {
+          geohash = GeohashService.encode(
+            position.latitude,
+            position.longitude,
+            precision: 5, // ~2.4km cells for 5km radius
+          );
+          print('📍 Report geohash: $geohash');
+        }      
+
         final reportData = {
           'userId': user.uid,
           'userName': user.displayName ?? 'Unknown User',
           'userEmail': user.email ?? '',
           'type': type,
+          'title': type, 
           'description': description,
           'priority': selectedPriority,
           'status': 'pending',
           'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
           'location': position != null
               ? {
                   'latitude': position.latitude,
                   'longitude': position.longitude,
+                  'geohash': geohash, 
+                  'timestamp': FieldValue.serverTimestamp(),
                 }
               : null,
         };
@@ -2402,27 +2437,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             .collection('emergency_reports')
             .add(reportData);
 
-        // 2. Create notification for the user
-        await FirebaseFirestore.instance.collection('notifications').add({
-          'userId': user.uid,
-          'title': '$type報告を送信しました',
-          'body': description,
-          'type': 'report',
-          'reportId': reportDoc.id,
-          'reportType': type,
-          'priority': selectedPriority,
-          'status': 'pending',
-          'read': false,
-          'pinned': false,
-          'favorite': false,
-          'receivedAt': FieldValue.serverTimestamp(),
-          'location': position != null
-              ? {
-                  'latitude': position.latitude,
-                  'longitude': position.longitude,
-                }
-              : null,
-        });
+        print('✅ Emergency report created: ${reportDoc.id}');
+        
+        // Update user's location and geohash for nearby user detection
+        if (position != null && geohash != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({
+            'lastLocation': {
+              'latitude': position.latitude,
+              'longitude': position.longitude,
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            'geohash': geohash, // Store geohash for efficient Cloud Functions queries
+          });
+          print('✅ User location and geohash updated for nearby detection');
+        }
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2442,7 +2473,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '管理者に通知されました',
+                          '管理者と近隣ユーザーに通知されました',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.white.withOpacity(0.9),
@@ -2823,5 +2854,48 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
       ),
     );
+  }
+
+  // Update user's location and geohash periodically for nearby detection
+  Future<void> _updateUserLocationInFirestore() async {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user == null) return;
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+      
+      // Calculate geohash
+      final geohash = GeohashService.encode(
+        position.latitude,
+        position.longitude,
+        precision: 5,
+      );
+
+      // Update Firestore
+      await _firestore.collection('users').doc(user.uid).set({
+        'lastLocation': {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        'geohash': geohash,
+        'isOnline': true,
+        'lastSeen': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ User location updated: ${position.latitude}, ${position.longitude}');
+      debugPrint('📍 Geohash: $geohash');
+    } catch (e) {
+      debugPrint('❌ Error updating user location: $e');
+    }
   }
 }

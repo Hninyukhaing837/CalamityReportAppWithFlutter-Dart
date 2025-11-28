@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Top-level function for background message handler
 @pragma('vm:entry-point')
@@ -11,7 +12,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('🔔 Background message received: ${message.messageId}');
   print('Title: ${message.notification?.title}');
   print('Body: ${message.notification?.body}');
-  
+
   // Save to Firestore even in background
   await FCMService._saveNotificationToFirestoreStatic(message);
 }
@@ -24,16 +25,20 @@ class FCMService {
   late FirebaseMessaging _firebaseMessaging;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
+
+  // NEW: Local notifications plugin for custom sounds
+  final FlutterLocalNotificationsPlugin _localNotifications =
+  FlutterLocalNotificationsPlugin();
+
   String? _fcmToken;
   bool _isInitialized = false;
-  
+
   String? get fcmToken => _fcmToken;
   bool get isInitialized => _isInitialized;
 
   // Global key for showing SnackBars from anywhere
   static GlobalKey<ScaffoldMessengerState>? _scaffoldMessengerKey;
-  
+
   static void setScaffoldMessengerKey(GlobalKey<ScaffoldMessengerState> key) {
     _scaffoldMessengerKey = key;
   }
@@ -42,8 +47,11 @@ class FCMService {
   Future<void> initialize() async {
     try {
       print('Initializing FCM Service...');
-      
+
       _firebaseMessaging = FirebaseMessaging.instance;
+
+      // NEW: Initialize local notifications
+      await _initializeLocalNotifications();
 
       // Set background message handler (must be top-level function)
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -63,7 +71,7 @@ class FCMService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        
+
         // Get FCM token
         await _getToken();
 
@@ -86,6 +94,183 @@ class FCMService {
     } catch (e) {
       print('❌ FCM initialization error: $e');
       _isInitialized = false;
+    }
+  }
+
+  /// NEW: Initialize local notifications for custom sounds
+  Future<void> _initializeLocalNotifications() async {
+    if (kIsWeb) {
+      print('Local notifications not supported on web');
+      return;
+    }
+
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (details) {
+        print('Local notification tapped: ${details.payload}');
+      },
+    );
+
+    // Create Android notification channels programmatically from Dart
+    if (Platform.isAndroid) {
+      // Default channel
+      const AndroidNotificationChannel defaultChannel = AndroidNotificationChannel(
+        'default_channel',
+        '一般通知',
+        description: '一般的な通知',
+        importance: Importance.high,
+        enableVibration: true,
+        showBadge: true,
+      );
+
+      // Emergency channel
+      const AndroidNotificationChannel emergencyChannel = AndroidNotificationChannel(
+        'emergency_channel',
+        '緊急通知',
+        description: '緊急災害情報',
+        importance: Importance.max,
+        enableVibration: true,
+        showBadge: true,
+      );
+
+      // Create channels
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(defaultChannel);
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(emergencyChannel);
+
+      print('✅ Android notification channels created from Dart');
+    }
+
+    print('✅ Local notifications initialized');
+  }
+
+  /// NEW: Update notification channels based on user sound preferences
+  /// Call this whenever sound settings change
+  Future<void> updateNotificationChannels() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      print('⚠️ Channel updates only supported on Android');
+      return;
+    }
+
+    try {
+      // Get user's sound preferences
+      final preferences = await _getUserSoundPreferences();
+      final soundEnabled = preferences['soundEnabled'] as bool;
+      final soundDuration = preferences['soundDuration'] as String;
+
+      print('🔄 Updating notification channels - Sound: $soundEnabled, Duration: $soundDuration');
+
+      // Get the Android implementation
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+      if (androidPlugin == null) {
+        print('⚠️ Android plugin not available');
+        return;
+      }
+
+      // Delete existing channels first (to force update)
+      try {
+        await androidPlugin.deleteNotificationChannel('default_channel');
+        await androidPlugin.deleteNotificationChannel('emergency_channel');
+        print('🗑️ Deleted old notification channels');
+      } catch (e) {
+        print('⚠️ Could not delete old channels (may not exist): $e');
+      }
+
+      // Recreate default channel with user preferences
+      final defaultChannel = AndroidNotificationChannel(
+        'default_channel',
+        '一般通知',
+        description: '一般的な通知',
+        importance: Importance.high,
+        enableVibration: true,
+        showBadge: true,
+        playSound: soundEnabled,
+        sound: soundEnabled
+            ? RawResourceAndroidNotificationSound(_getSoundFile(soundDuration).replaceAll('.mp3', ''))
+            : null,
+      );
+
+      // Emergency channel - always with sound (for safety)
+      final emergencyChannel = AndroidNotificationChannel(
+        'emergency_channel',
+        '緊急通知',
+        description: '緊急災害情報',
+        importance: Importance.max,
+        enableVibration: true,
+        showBadge: true,
+        playSound: true, // Emergency notifications always have sound
+        sound: RawResourceAndroidNotificationSound(
+          _getSoundFile('long').replaceAll('.mp3', ''), // Emergency uses long sound
+        ),
+      );
+
+      // Create the updated channels
+      await androidPlugin.createNotificationChannel(defaultChannel);
+      await androidPlugin.createNotificationChannel(emergencyChannel);
+
+      print('✅ Notification channels updated with sound: ${soundEnabled ? _getSoundFile(soundDuration).replaceAll(".mp3", "") : "silent"}');
+    } catch (e) {
+      print('❌ Error updating notification channels: $e');
+    }
+  }
+
+  /// NEW: Get user's sound preferences from Firestore
+  Future<Map<String, dynamic>> _getUserSoundPreferences() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return {
+          'soundEnabled': true,
+          'soundDuration': 'default',
+        };
+      }
+
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        return {
+          'soundEnabled': data['notificationSoundEnabled'] as bool? ?? true,
+          'soundDuration': data['notificationSoundDuration'] as String? ?? 'default',
+        };
+      }
+    } catch (e) {
+      print('Error getting sound preferences: $e');
+    }
+
+    return {
+      'soundEnabled': true,
+      'soundDuration': 'default',
+    };
+  }
+
+  /// NEW: Get sound file based on duration preference
+  String _getSoundFile(String duration) {
+    switch (duration) {
+      case 'short':
+        return 'notification_short.mp3'; // 1-2 seconds
+      case 'long':
+        return 'notification_long.mp3';  // 5-7 seconds
+      case 'default':
+      default:
+        return 'notification_default.mp3'; // 3-4 seconds
     }
   }
 
@@ -114,7 +299,7 @@ class FCMService {
   /// Save token to Firestore
   Future<void> _saveTokenToFirestore() async {
     if (_fcmToken == null) return;
-    
+
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -122,7 +307,7 @@ class FCMService {
         return;
       }
 
-      await _firestore.collection('user_tokens').doc(user.uid).set({
+      final tokenData = {
         'fcmToken': _fcmToken,
         'platform': kIsWeb ? 'web' : (Platform.isAndroid ? 'android' : 'ios'),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -132,6 +317,18 @@ class FCMService {
           'isWeb': kIsWeb,
           'platform': kIsWeb ? 'web' : Platform.operatingSystem,
         },
+      };
+
+      // Save to user_tokens collection (for detailed tracking)
+      await _firestore.collection('user_tokens').doc(user.uid).set(
+        tokenData,
+        SetOptions(merge: true),
+      );
+
+      // Also save to users collection (for Cloud Functions)
+      await _firestore.collection('users').doc(user.uid).set({
+        'fcmToken': _fcmToken,
+        'fcmUpdatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       print('✅ Token saved to Firestore for user: ${user.uid}');
@@ -143,7 +340,7 @@ class FCMService {
   /// Setup message handlers for foreground, background, and terminated states
   void _setupMessageHandlers() {
     // 1. FOREGROUND - App is open and in use
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       print('📱 Foreground message received');
       print('Message ID: ${message.messageId}');
       print('Title: ${message.notification?.title}');
@@ -152,8 +349,11 @@ class FCMService {
 
       if (message.notification != null) {
         // Save to Firestore
-        _saveNotificationToFirestore(message);
-        
+        await _saveNotificationToFirestore(message);
+
+        // NEW: Show notification with sound preferences
+        await _showNotificationWithSoundPreferences(message);
+
         // Show in-app notification
         _showInAppNotification(message);
       }
@@ -175,11 +375,78 @@ class FCMService {
         print('🚀 App opened from terminated state');
         print('Message ID: ${message.messageId}');
         print('Data: ${message.data}');
-        
+
         // Handle navigation
         _handleNotificationTap(message.data);
       }
     });
+  }
+
+  /// NEW: Show local notification with sound preferences
+  Future<void> _showNotificationWithSoundPreferences(RemoteMessage message) async {
+    if (kIsWeb) {
+      print('Local notifications not supported on web');
+      return;
+    }
+
+    try {
+      // Get user's sound preferences
+      final preferences = await _getUserSoundPreferences();
+      final soundEnabled = preferences['soundEnabled'] as bool;
+      final soundDuration = preferences['soundDuration'] as String;
+
+      print('🔊 Sound preferences - Enabled: $soundEnabled, Duration: $soundDuration');
+
+      // Determine notification priority/importance
+      final isEmergency = message.data['type'] == 'emergency' ||
+          message.data['severity'] == 'high';
+
+      // Android notification details
+      final androidDetails = AndroidNotificationDetails(
+        isEmergency ? 'emergency_channel' : 'default_channel',
+        isEmergency ? '緊急通知' : '一般通知',
+        channelDescription: isEmergency ? '緊急災害情報' : '一般的な通知',
+        importance: isEmergency ? Importance.max : Importance.high,
+        priority: isEmergency ? Priority.max : Priority.high,
+        playSound: soundEnabled,
+        sound: soundEnabled
+            ? RawResourceAndroidNotificationSound(_getSoundFile(soundDuration).replaceAll('.mp3', ''))
+            : null,
+        enableVibration: true,
+        styleInformation: message.notification?.body != null
+            ? BigTextStyleInformation(message.notification!.body!)
+            : null,
+      );
+
+      // iOS notification details
+      final iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: soundEnabled,
+        sound: soundEnabled ? _getSoundFile(soundDuration) : null,
+        interruptionLevel: isEmergency
+            ? InterruptionLevel.critical
+            : InterruptionLevel.active,
+      );
+
+      final notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // Show the notification
+      await _localNotifications.show(
+        message.hashCode,
+        message.notification?.title ?? '通知',
+        message.notification?.body ?? '',
+        notificationDetails,
+        payload: message.data.toString(),
+      );
+
+      print('✅ Local notification shown with sound: ${soundEnabled ? _getSoundFile(soundDuration) : "silent"}');
+    } catch (e) {
+      print('❌ Error showing local notification: $e');
+    }
   }
 
   /// Save notification to Firestore with duplicate prevention
@@ -192,8 +459,8 @@ class FCMService {
       }
 
       // Create unique notification ID from message
-      final notificationId = message.messageId ?? 
-                            'notif_${message.sentTime?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}';
+      final notificationId = message.messageId ??
+          'notif_${message.sentTime?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}';
 
       print('📝 Saving notification: $notificationId');
 
@@ -202,7 +469,7 @@ class FCMService {
           .collection('notifications')
           .doc(notificationId)
           .get();
-      
+
       if (existingDoc.exists) {
         print('⚠️ Notification already exists, skipping: $notificationId');
         return;
@@ -210,7 +477,7 @@ class FCMService {
 
       // ✅ Extract image URL from multiple sources
       String imageUrl = '';
-      
+
       // Priority 1: FCM Android notification image
       if (message.notification?.android?.imageUrl != null) {
         imageUrl = message.notification!.android!.imageUrl!;
@@ -244,60 +511,77 @@ class FCMService {
         'receivedAt': FieldValue.serverTimestamp(),
         'read': false,
         'type': message.data['type'] ?? (imageUrl.isNotEmpty ? 'media' : 'general'),
-        'imageUrl': imageUrl, // ✅ Save the image URL
+        'imageUrl': imageUrl,
         'messageId': notificationId,
-        'sentTime': message.sentTime != null 
+        'sentTime': message.sentTime != null
             ? Timestamp.fromMillisecondsSinceEpoch(message.sentTime!.millisecondsSinceEpoch)
             : FieldValue.serverTimestamp(),
         'pinned': false,
         'favorite': false,
+        // Preserve all emergency report data from Cloud Function
+        'reportId': message.data['reportId'],
+        'reportType': message.data['reportType'],
+        'priority': message.data['priority'],
+        'reportUserId': message.data['reportUserId'] ?? message.data['userId'],
+        'reportUserName': message.data['reportUserName'] ?? message.data['userName'],
+        'reportUserEmail': message.data['reportUserEmail'] ?? message.data['userEmail'],
+        'distance': message.data['distance'] != null
+            ? double.tryParse(message.data['distance'].toString())
+            : null,
+        'latitude': message.data['latitude'] != null
+            ? double.tryParse(message.data['latitude'].toString())
+            : null,
+        'longitude': message.data['longitude'] != null
+            ? double.tryParse(message.data['longitude'].toString())
+            : null,
       });
 
-      print('✅ Notification saved to Firestore: $notificationId');
+      print('✅ Notification saved');
     } catch (e) {
       print('❌ Error saving notification: $e');
     }
   }
 
-  /// Static method for background handler
+  /// Static method for background handler to save notifications
   static Future<void> _saveNotificationToFirestoreStatic(RemoteMessage message) async {
     try {
+      // Get current user
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        print('⚠️ Background: No authenticated user');
+        return;
+      }
 
-      final notificationId = message.messageId ?? 
-                            'notif_${message.sentTime?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}';
+      final notificationId = message.messageId ??
+          'notif_${message.sentTime?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}';
+
+      print('📝 Background: Saving notification: $notificationId');
 
       // Check for duplicates
       final existingDoc = await FirebaseFirestore.instance
           .collection('notifications')
           .doc(notificationId)
           .get();
-      
+
       if (existingDoc.exists) {
         print('⚠️ Background: Notification already exists');
         return;
       }
-      
-      // ✅ Extract image URL from multiple sources
+
+      // Extract image URL
       String imageUrl = '';
-      
-      // Priority 1: FCM Android notification image
       if (message.notification?.android?.imageUrl != null) {
         imageUrl = message.notification!.android!.imageUrl!;
         print('📸 Background: Image from Android notification: $imageUrl');
       }
-      // Priority 2: FCM iOS notification image  
       else if (message.notification?.apple?.imageUrl != null) {
         imageUrl = message.notification!.apple!.imageUrl!;
         print('📸 Background: Image from iOS notification: $imageUrl');
       }
-      // Priority 3: Custom data field
       else if (message.data.containsKey('imageUrl') && message.data['imageUrl']!.isNotEmpty) {
         imageUrl = message.data['imageUrl']!;
         print('📸 Background: Image from data payload: $imageUrl');
       }
-      // Priority 4: Legacy mediaUrl field
       else if (message.data.containsKey('mediaUrl') && message.data['mediaUrl']!.isNotEmpty) {
         imageUrl = message.data['mediaUrl']!;
         print('📸 Background: Image from mediaUrl: $imageUrl');
@@ -315,13 +599,28 @@ class FCMService {
         'receivedAt': FieldValue.serverTimestamp(),
         'read': false,
         'type': message.data['type'] ?? (imageUrl.isNotEmpty ? 'media' : 'general'),
-        'imageUrl': imageUrl, // ✅ Save the image URL
+        'imageUrl': imageUrl,
         'messageId': notificationId,
-        'sentTime': message.sentTime != null 
+        'sentTime': message.sentTime != null
             ? Timestamp.fromMillisecondsSinceEpoch(message.sentTime!.millisecondsSinceEpoch)
             : FieldValue.serverTimestamp(),
         'pinned': false,
         'favorite': false,
+        'reportId': message.data['reportId'],
+        'reportType': message.data['reportType'],
+        'priority': message.data['priority'],
+        'reportUserId': message.data['reportUserId'] ?? message.data['userId'],
+        'reportUserName': message.data['reportUserName'] ?? message.data['userName'],
+        'reportUserEmail': message.data['reportUserEmail'] ?? message.data['userEmail'],
+        'distance': message.data['distance'] != null
+            ? double.tryParse(message.data['distance'].toString())
+            : null,
+        'latitude': message.data['latitude'] != null
+            ? double.tryParse(message.data['latitude'].toString())
+            : null,
+        'longitude': message.data['longitude'] != null
+            ? double.tryParse(message.data['longitude'].toString())
+            : null,
       });
 
       print('✅ Background: Notification saved');
@@ -338,8 +637,8 @@ class FCMService {
     }
 
     final scaffoldMessenger = _scaffoldMessengerKey!.currentState!;
-    final isEmergency = message.data['type'] == 'emergency' || 
-                       message.data['severity'] == 'high';
+    final isEmergency = message.data['type'] == 'emergency' ||
+        message.data['severity'] == 'high';
 
     scaffoldMessenger.showSnackBar(
       SnackBar(
@@ -396,39 +695,31 @@ class FCMService {
   void _handleNotificationTap(Map<String, dynamic> data) {
     print('🔧 Handling notification tap: $data');
     print('📍 Screen requested: ${data['screen']}');
-    
-    // Note: Navigation should be handled by the app using GoRouter
-    // The app can listen to FCM data and navigate accordingly
-    // Example: Use a notification navigation handler in your app
-    
+
     final screen = data['screen'] as String?;
-    
+
     switch (screen) {
       case 'notifications':
       case 'history':
         print('→ Navigate to: /notification-history');
-        // App should implement: context.go('/notification-history');
         break;
-      
+
       case 'chat':
         final chatId = data['chatId'];
         print('→ Navigate to: /chat/$chatId');
-        // App should implement: context.go('/chat/$chatId');
         break;
-      
+
       case 'report':
         final reportId = data['reportId'];
         print('→ Navigate to: /report/$reportId');
-        // App should implement: context.go('/report/$reportId');
         break;
-      
+
       case 'map':
         final lat = data['lat'];
         final lng = data['lng'];
         print('→ Navigate to: /map with lat=$lat, lng=$lng');
-        // App should implement: context.go('/map', extra: {'lat': lat, 'lng': lng});
         break;
-      
+
       default:
         print('→ Unknown screen or no screen specified: $screen');
         print('→ Default: Navigate to /notification-history');
@@ -438,12 +729,11 @@ class FCMService {
   /// Subscribe to FCM topic
   Future<void> subscribeToTopic(String topic) async {
     try {
-      // ADD: Check if web platform
-    if (kIsWeb) {
-      print('Topic subscription not supported on web');
-      return;
-    }
-      
+      if (kIsWeb) {
+        print('Topic subscription not supported on web');
+        return;
+      }
+
       await _firebaseMessaging.subscribeToTopic(topic);
       print('Subscribed to topic: $topic');
     } catch (e) {
@@ -451,15 +741,14 @@ class FCMService {
     }
   }
 
-  // Unsubscribe from FCM topic
+  /// Unsubscribe from FCM topic
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
-      // Check if web platform
       if (kIsWeb) {
         print('Topic unsubscription not supported on web');
         return;
       }
-      
+
       await _firebaseMessaging.unsubscribeFromTopic(topic);
       print('Unsubscribed from topic: $topic');
     } catch (e) {
@@ -501,7 +790,7 @@ class FCMService {
   Future<bool> hasPermission() async {
     final settings = await _firebaseMessaging.getNotificationSettings();
     return settings.authorizationStatus == AuthorizationStatus.authorized ||
-           settings.authorizationStatus == AuthorizationStatus.provisional;
+        settings.authorizationStatus == AuthorizationStatus.provisional;
   }
 
   /// Request notification permission (if not already granted)
@@ -511,8 +800,8 @@ class FCMService {
       badge: true,
       sound: true,
     );
-    
+
     return settings.authorizationStatus == AuthorizationStatus.authorized ||
-           settings.authorizationStatus == AuthorizationStatus.provisional;
+        settings.authorizationStatus == AuthorizationStatus.provisional;
   }
 }

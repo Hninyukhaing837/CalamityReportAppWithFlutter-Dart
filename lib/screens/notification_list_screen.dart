@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';  
+import 'package:flutter/foundation.dart'; 
+import 'package:intl/intl.dart';
 
 class NotificationListScreen extends StatefulWidget {
   const NotificationListScreen({super.key});
@@ -10,25 +11,25 @@ class NotificationListScreen extends StatefulWidget {
   State<NotificationListScreen> createState() => _NotificationListScreenState();
 }
 
-class _NotificationListScreenState extends State<NotificationListScreen> {
+class
+_NotificationListScreenState extends State<NotificationListScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  
+
   // Filtering
   String _selectedFilter = 'all';
   bool _isSelectionMode = false;
   Set<String> _selectedNotifications = {};
-  
+
   List<DocumentSnapshot> _currentNotifications = [];
   List<DocumentSnapshot> _allNotifications = [];
   static const int _pageSize = 10;
   bool _hasMore = true;
   bool _isLoadingMore = false;
   int _currentPage = 1;
-  
-  //  NEW: Search
+
   String _searchQuery = '';
   bool _isSearching = false;
 
@@ -36,15 +37,109 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   DateTime? _startDate;
   DateTime? _endDate;
 
+  // Create separate broadcast streams for each count type
+  late final Stream<int> _allCountStream;
+  late final Stream<int> _unreadCountStream;
+  late final Stream<int> _pinnedCountStream;
+  late final Stream<int> _favoritesCountStream;
+  late final Stream<int> _emergencyCountStream;
+  late final Stream<int> _nearbyCountStream;
+  late final Stream<int> _emergencyReportCountStream;
+  late final Stream<int> _mediaCountStream;
+
+  // Admin check
+  bool _isAdmin = false;
+
   @override
   void initState() {
     super.initState();
+    _checkAdminStatus();
+
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text;
         _currentPage = 1;
       });
     });
+
+    // ✅ Initialize all broadcast streams
+    final user = _auth.currentUser;
+    if (user != null) {
+      final baseQuery = _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: user.uid);
+
+      // All notifications
+      _allCountStream = baseQuery
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+
+      // Unread notifications
+      _unreadCountStream = baseQuery
+          .where('read', isEqualTo: false)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+
+      // Pinned notifications
+      _pinnedCountStream = baseQuery
+          .where('pinned', isEqualTo: true)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+
+      // Favorites
+      _favoritesCountStream = baseQuery
+          .where('favorite', isEqualTo: true)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+
+      // Emergency (combined emergency, emergency_report, nearby_report)
+      _emergencyCountStream = baseQuery
+          .snapshots()
+          .map((snapshot) {
+        return snapshot.docs.where((doc) {
+          final type = doc.get('type') ?? '';
+          return type == 'emergency' ||
+              type == 'emergency_report' ||
+              type == 'nearby_report';
+        }).length;
+      })
+          .asBroadcastStream();
+
+      // Nearby reports
+      _nearbyCountStream = baseQuery
+          .where('type', isEqualTo: 'nearby_report')
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+
+      // Emergency reports
+      _emergencyReportCountStream = baseQuery
+          .where('type', isEqualTo: 'emergency_report')
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+
+      // Media
+      _mediaCountStream = baseQuery
+          .where('type', isEqualTo: 'media')
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .asBroadcastStream();
+    } else {
+      // If no user, create empty streams
+      _allCountStream = Stream.value(0).asBroadcastStream();
+      _unreadCountStream = Stream.value(0).asBroadcastStream();
+      _pinnedCountStream = Stream.value(0).asBroadcastStream();
+      _favoritesCountStream = Stream.value(0).asBroadcastStream();
+      _emergencyCountStream = Stream.value(0).asBroadcastStream();
+      _nearbyCountStream = Stream.value(0).asBroadcastStream();
+      _emergencyReportCountStream = Stream.value(0).asBroadcastStream();
+      _mediaCountStream = Stream.value(0).asBroadcastStream();
+    }
   }
 
   @override
@@ -54,20 +149,158 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     super.dispose();
   }
 
-  // ✅ NEW: 検索テキスト変更リスナー（デバウンス）
+  // Check if current user is admin
+  Future<void> _checkAdminStatus() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        final userDoc = await _firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          setState(() {
+            _isAdmin = userDoc.data()?['role'] == 'admin';
+          });
+        }
+      } catch (e) {
+        print('Error checking admin status: $e');
+      }
+    }
+  }
+
+  // 検索テキスト変更リスナー（デバウンス）
   void _onSearchChanged() {
     setState(() => _searchQuery = _searchController.text.toLowerCase());
   }
 
+  // to filter notifications
+  List<DocumentSnapshot> _filterOwnReports(List<DocumentSnapshot> docs, String userId) {
+    return docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final type = data['type'] ?? 'general';
+      final reportUserId = data['reportUserId'] ?? '';
+
+      // Filter out own emergency/nearby reports
+      if ((type == 'emergency_report' || type == 'nearby_report') &&
+          reportUserId == userId) {
+        return false; // Don't show own reports
+      }
+
+      return true; // Show all other notifications
+    }).toList();
+  }
+
   //検索フィルター（クライアント側）
   List<DocumentSnapshot> _applySearchFilter(List<DocumentSnapshot> docs) {
+    final user = _auth.currentUser;
+    if (user != null) {
+      // Filter out own emergency/nearby reports
+      docs = docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final type = data['type'] ?? 'general';
+        final reportUserId = data['reportUserId'] ?? '';
+
+        // ✅ Filter out own emergency/nearby reports
+        if ((type == 'emergency_report' || type == 'nearby_report') &&
+            reportUserId == user.uid) {
+          return false;
+        }
+
+        // ✅ Filter out 'report' type (self-confirmation notifications)
+        if (type == 'report') {
+          return false;
+        }
+
+        return true;
+      }).toList();
+    }
+
+    // Apply emergency filter - ONLY show 'emergency' type, not reports
+    if (_selectedFilter == 'emergency') {
+      docs = docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final type = data['type'] ?? '';
+        // Only show FCM emergency notifications, not emergency_report or nearby_report
+        return type == 'emergency';
+      }).toList();
+    }
+
+    // For "all" tab, deduplicate nearby and emergency reports by reportId
+    if (_selectedFilter == 'all') {
+      final Map<String, DocumentSnapshot> uniqueReports = {};
+      final List<DocumentSnapshot> nonReportDocs = [];
+
+      for (var doc in docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final type = data['type'] ?? '';
+
+        if (type == 'nearby_report' || type == 'emergency_report') {
+          final reportId = data['reportId'] ?? doc.id;
+          final key = '${reportId}_${type}';  
+          if (!uniqueReports.containsKey(key)) {
+            uniqueReports[key] = doc;
+          }
+        } else {
+          nonReportDocs.add(doc);
+        }
+      }
+
+      // COMBINE all notifications (include emergency/nearby)
+      docs = [...nonReportDocs, ...uniqueReports.values];
+
+      // Sort by timestamp
+      docs.sort((a, b) {
+        final aTime = (a.data() as Map<String, dynamic>)['receivedAt'] as Timestamp?;
+        final bTime = (b.data() as Map<String, dynamic>)['receivedAt'] as Timestamp?;
+        if (aTime == null || bTime == null) return 0;
+        return bTime.compareTo(aTime);
+      });
+    }
+
+    // For nearby tab, deduplicate by reportId
+    if (_selectedFilter == 'nearby') {
+      final Map<String, DocumentSnapshot> uniqueReports = {};
+      for (var doc in docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final reportId = data['reportId'] ?? doc.id;
+
+        // Keep only one notification per reportId (the most recent one)
+        if (!uniqueReports.containsKey(reportId)) {
+          uniqueReports[reportId] = doc;
+        }
+      }
+      docs = uniqueReports.values.toList();
+    }
+
+    // For emergency_report tab, deduplicate by reportId
+    if (_selectedFilter == 'emergency_report') {
+      final Map<String, DocumentSnapshot> uniqueReports = {};
+      for (var doc in docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final reportId = data['reportId'] ?? doc.id;
+
+        // Keep only one notification per reportId (the most recent one)
+        if (!uniqueReports.containsKey(reportId)) {
+          uniqueReports[reportId] = doc;
+        }
+      }
+      docs = uniqueReports.values.toList();
+    }
+
     if (_searchQuery.isEmpty) return docs;
 
     return docs.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       final title = (data['title'] ?? '').toString().toLowerCase();
       final body = (data['body'] ?? '').toString().toLowerCase();
-      return title.contains(_searchQuery) || body.contains(_searchQuery);
+      // Also search in report title and details
+      final reportTitle = (data['reportTitle'] ?? '').toString().toLowerCase();
+      final reportDetails = (data['reportDetails'] ?? '').toString().toLowerCase();
+      final description = (data['description'] ?? '').toString().toLowerCase();
+
+      return title.contains(_searchQuery) ||
+          body.contains(_searchQuery) ||
+          reportTitle.contains(_searchQuery) ||
+          reportDetails.contains(_searchQuery) ||
+          description.contains(_searchQuery);
     }).toList();
   }
 
@@ -85,36 +318,36 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isSelectionMode 
+          _isSelectionMode
               ? '${_selectedNotifications.length}件選択'
-              : _isSearching 
-                  ? '検索' 
-                  : '通知履歴',
-          style: const TextStyle(fontSize: 16), 
+              : _isSearching
+              ? '検索'
+              : '通知履歴',
+          style: const TextStyle(fontSize: 16),
         ),
         elevation: 0,
         leading: _isSelectionMode
             ? IconButton(
-                icon: const Icon(Icons.close, size: 20),
-                onPressed: _exitSelectionMode,
-              )
+          icon: const Icon(Icons.close, size: 20),
+          onPressed: _exitSelectionMode,
+        )
             : _isSearching
-                ? IconButton(
-                    icon: const Icon(Icons.arrow_back, size: 20),
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = false;
-                        _searchController.clear();
-                        _searchQuery = '';
-                      });
-                    },
-                  )
-                : null,
+            ? IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () {
+            setState(() {
+              _isSearching = false;
+              _searchController.clear();
+              _searchQuery = '';
+            });
+          },
+        )
+            : null,
         actions: _isSelectionMode
             ? _buildSelectionActions()
             : _isSearching
-                ? []
-                : _buildNormalActions(user.uid),
+            ? []
+            : _buildNormalActions(user.uid),
       ),
       body: Column(
         children: [
@@ -160,9 +393,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       case 'unread':
         query = query.where('read', isEqualTo: false);
         break;
-      case 'emergency':
-        query = query.where('type', isEqualTo: 'emergency');
-        break;
       case 'media':
         query = query.where('type', isEqualTo: 'media');
         break;
@@ -174,6 +404,15 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         break;
       case 'report':
         query = query.where('type', isEqualTo: 'report');
+        break;
+      case 'nearby':
+        query = query.where('type', isEqualTo: 'nearby_report');
+        break;
+      case 'emergency':
+      // Will filter in _applySearchFilter to include multiple types
+        break;
+      case 'emergency_report':
+        query = query.where('type', isEqualTo: 'emergency_report');
         break;
     }
 
@@ -201,8 +440,11 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           _buildFilterItem('favorites', 'お気に入り', Icons.star, Colors.pink),
           _buildFilterItem('unread', '未読', Icons.mark_email_unread, Colors.orange),
           _buildFilterItem('emergency', '緊急', Icons.warning, Colors.red),
+          _buildFilterItem('nearby', '近隣', Icons.location_on, Colors.blue),
+          // Only show emergency_report tab for admins
+          if (_isAdmin)
+            _buildFilterItem('emergency_report', '緊急報告', Icons.report_problem, Colors.deepOrange),
           _buildFilterItem('media', 'メディア', Icons.photo_library, Colors.green),
-          _buildFilterItem('report', 'レポート', Icons.description, Colors.purple),
         ],
       ),
     );
@@ -211,13 +453,13 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   Widget _buildFilterItem(String value, String label, IconData icon, Color? color) {
     final isSelected = _selectedFilter == value;
     final filterColor = color ?? Colors.blue;
-    
+
     return StreamBuilder<int>(
       stream: _getNotificationCountStream(value),
       builder: (context, snapshot) {
         final count = snapshot.data ?? 0;
         final displayCount = count > 99 ? '99+' : count.toString();
-        
+
         return Padding(
           padding: const EdgeInsets.only(right: 6),
           child: Material(
@@ -230,10 +472,10 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                   _selectedNotifications.clear();
                   _isSelectionMode = false;
                   // Reset pagination
-                  _currentPage = 1; 
+                  _currentPage = 1;
                   _hasMore = true;
                   _currentNotifications.clear();
-                  _allNotifications.clear(); 
+                  _allNotifications.clear();
                 });
               },
               borderRadius: BorderRadius.circular(16),
@@ -262,7 +504,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                         decoration: BoxDecoration(
-                          color: isSelected 
+                          color: isSelected
                               ? Colors.white.withOpacity(0.3)
                               : filterColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(10),
@@ -288,41 +530,39 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   Stream<int> _getNotificationCountStream(String filterType) {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value(0);
-
-    Query query = _firestore
-        .collection('notifications')
-        .where('userId', isEqualTo: user.uid);
-
     switch (filterType) {
-      case 'unread':
-        query = query.where('read', isEqualTo: false);
-        break;
-      case 'report':
-        query = query.where('type', isEqualTo: 'report');
-      break;
       case 'all':
-        // Count all notifications
-        break;
+        return _allCountStream;
+      case 'unread':
+        return _unreadCountStream;
+      case 'pinned':
+        return _pinnedCountStream;
+      case 'favorites':
+        return _favoritesCountStream;
+      case 'emergency':
+        return _emergencyCountStream;
+      case 'nearby':
+        return _nearbyCountStream;
+      case 'emergency_report':
+        return _emergencyReportCountStream;
+      case 'media':
+        return _mediaCountStream;
       default:
-        return Stream.value(0); // Don't show count for other filters
+        return Stream.value(0);
     }
-
-    return query.snapshots().map((snapshot) => snapshot.docs.length);
   }
 
   Widget _buildNotificationsListStream(String userId, List<DocumentSnapshot> filteredNotifications) {
     // Store all notifications from StreamBuilder
     _allNotifications = filteredNotifications;
-    
+
     // Calculate how many to show based on current page
     final itemsToShow = _currentPage * _pageSize;
     _currentNotifications = _allNotifications.take(itemsToShow).toList();
-    
+
     // Check if there are more to load
     _hasMore = _allNotifications.length > _currentNotifications.length;
-    
+
     if (_currentNotifications.isNotEmpty) {
     }
 
@@ -338,13 +578,13 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
 
     return RefreshIndicator(
       onRefresh: () async {
-       setState(() {
+        setState(() {
           _currentPage = 1;
           _hasMore = _allNotifications.length > _pageSize;
         });
       },
       child: ListView(
-        padding: const EdgeInsets.all(12), 
+        padding: const EdgeInsets.all(12),
         children: [
           if (pinnedNotifications.isNotEmpty && _selectedFilter != 'pinned') ...[
             _buildSectionHeader('ピン留め通知', Icons.push_pin, pinnedNotifications.length),
@@ -370,25 +610,25 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
             Center(
               child: _isLoadingMore
                   ? const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: CircularProgressIndicator(),
-                    )
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(),
+              )
                   : OutlinedButton.icon(
-                      onPressed: _loadMoreNotifications,
-                      icon: const Icon(Icons.history, size: 18),
-                      label: const Text(
-                        'さらに表示',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
+                onPressed: _loadMoreNotifications,
+                icon: const Icon(Icons.history, size: 18),
+                label: const Text(
+                  'さらに表示',
+                  style: TextStyle(fontSize: 13),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  const SizedBox(height: 16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
 
           // No more notifications message
@@ -404,8 +644,8 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               ),
             ),
             const SizedBox(height: 16),
+          ],
         ],
-       ],
       ),
     );
   }
@@ -424,12 +664,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                    )
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              )
                   : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -513,7 +753,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       });
     }
   }
-  
+
   // セクションヘッダーを構築
   Widget _buildSectionHeader(String title, IconData icon, int count) {
     return Row(
@@ -550,14 +790,14 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
 
   // 日付グループ化された通知を構築
   List<Widget> _buildGroupedNotifications(
-    List<DocumentSnapshot> notifications,
-    String userId, {
-    bool showPinned = false,
-  }) {
+      List<DocumentSnapshot> notifications,
+      String userId, {
+        bool showPinned = false,
+      }) {
     if (notifications.isEmpty) return [];
 
     final groupedNotifications = _groupNotificationsByDate(notifications);
-    
+
     return groupedNotifications.map((group) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -586,11 +826,11 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   // 日付ヘッダーを構築
   Widget _buildDateHeader(NotificationGroup group) {
     final allSelected = group.notifications.every(
-      (doc) => _selectedNotifications.contains(doc.id),
+          (doc) => _selectedNotifications.contains(doc.id),
     );
 
     String dateLabel = _getOutlookStyleDateLabel(group.dateKey, group.date);
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // Reduced
       decoration: BoxDecoration(
@@ -655,11 +895,11 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
     final dateOnly = DateTime(date.year, date.month, date.day);
-    
+
     // Calculate week boundaries
     final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
     final lastWeekStart = thisWeekStart.subtract(const Duration(days: 7));
-    
+
     if (dateOnly == today) {
       return '今日';
     } else if (dateOnly == yesterday) {
@@ -679,18 +919,18 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
 
   // 通知グループ化
   List<NotificationGroup> _groupNotificationsByDate(
-    List<DocumentSnapshot> notifications,
-  ) {
+      List<DocumentSnapshot> notifications,
+      ) {
     final Map<String, List<DocumentSnapshot>> grouped = {};
-    
+
     for (var doc in notifications) {
       final data = doc.data() as Map<String, dynamic>;
       final timestamp = data['receivedAt'] as Timestamp?;
-      
+
       if (timestamp != null) {
         final date = timestamp.toDate();
         final dateKey = _getDateKey(date);
-        
+
         if (!grouped.containsKey(dateKey)) {
           grouped[dateKey] = [];
         }
@@ -707,7 +947,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     }).toList();
 
     groups.sort((a, b) => b.date.compareTo(a.date));
-    
+
     return groups;
   }
 
@@ -761,12 +1001,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
 
   // 通知カードを構築（画像表示・検索ハイライト対応）
   Widget _buildNotificationCard(
-    BuildContext context,
-    String docId,
-    Map<String, dynamic> data,
-    String userId, {
-    bool isPinned = false,
-  }) {
+      BuildContext context,
+      String docId,
+      Map<String, dynamic> data,
+      String userId, {
+        bool isPinned = false,
+      }) {
     final title = data['title'] ?? '通知';
     final body = data['body'] ?? '';
     final type = data['type'] ?? 'general';
@@ -776,15 +1016,38 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     final imageUrl = data['mediaUrl'] ?? data['imageUrl'] ?? '';
     final timestamp = data['receivedAt'] as Timestamp?;
 
+    // Get report creator info
+    final reportUserId = data['reportUserId'] ?? '';
+    final reportUserName = data['reportUserName'] ?? '';
+    final distance = data['distance'] as num?;
+
+    // FIXED: Get emergency report details from notification data
+    final reportTitle = data['reportType'] ?? data['title'] ?? '';
+    final reportDetails = data['body'] ?? data['reportDetails'] ?? data['description'] ?? '';
+    final severity = data['severity'] ?? data['priority'] ?? '';
+
+    // Get location data
+    final latitude = data['latitude'] as double?;
+    final longitude = data['longitude'] as double?;
+
+    final isNearbyReport = type == 'nearby_report';
+    final isEmergencyReport = type == 'emergency_report';
+    final isEmergency = type == 'emergency';
+
     final isSelected = _selectedNotifications.contains(docId);
-    
+
     Color cardColor;
     Color accentColor;
 
     switch (type) {
       case 'emergency':
+      case 'emergency_report':
         cardColor = Colors.red.shade50;
         accentColor = Colors.red.shade400;
+        break;
+      case 'nearby_report':
+        cardColor = Colors.orange.shade50;
+        accentColor = Colors.orange.shade400;
         break;
       case 'media':
         cardColor = Colors.purple.shade50;
@@ -796,6 +1059,31 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     }
 
     if (pinned) accentColor = Colors.amber.shade600;
+
+    // Helper function to get severity icon and color
+    IconData getSeverityIcon(String severity) {
+      final severityLower = severity.toLowerCase();
+      if (severityLower.contains('緊急') || severityLower == 'high') {
+        return Icons.emergency;
+      } else if (severityLower.contains('警告') || severityLower == 'medium') {
+        return Icons.warning;
+      } else if (severityLower.contains('注意') || severityLower == 'low') {
+        return Icons.info;
+      }
+      return Icons.circle;
+    }
+
+    Color getSeverityColor(String severity) {
+      final severityLower = severity.toLowerCase();
+      if (severityLower.contains('緊急') || severityLower == 'high') {
+        return Colors.red;
+      } else if (severityLower.contains('警告') || severityLower == 'medium') {
+        return Colors.orange;
+      } else if (severityLower.contains('注意') || severityLower == 'low') {
+        return Colors.yellow.shade700;
+      }
+      return Colors.grey;
+    }
 
     return Dismissible(
       key: Key(docId),
@@ -831,9 +1119,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           onLongPress: () => _handleLongPress(docId),
           borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.all(10), // Reduced padding
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              border: pinned 
+              border: pinned
                   ? Border(left: BorderSide(color: accentColor, width: 3))
                   : null,
               borderRadius: BorderRadius.circular(8),
@@ -854,14 +1142,14 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                       ),
                     ),
                   ),
-                
-                // Image or icon - smaller size
+
+                // Icon or image
                 if (imageUrl.isNotEmpty) ...[
                   GestureDetector(
-                    onTap: () => _showImageInfoDialog(context, imageUrl, type),
+                    onTap: () => _showImageInfoDialog(context, imageUrl, data),
                     child: Container(
-                      width: 44, // Smaller
-                      height: 44, // Smaller
+                      width: 44,
+                      height: 44,
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade200,
@@ -881,7 +1169,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                                 child: CircularProgressIndicator(
                                   value: loadingProgress.expectedTotalBytes != null
                                       ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
+                                      loadingProgress.expectedTotalBytes!
                                       : null,
                                   strokeWidth: 2,
                                 ),
@@ -889,7 +1177,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                             );
                           },
                           errorBuilder: (context, error, stackTrace) {
-                            // Simple placeholder without CORS label
                             return Container(
                               color: Colors.grey.shade100,
                               child: Icon(
@@ -914,24 +1201,169 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                     child: Icon(
                       _getTypeIcon(type),
                       color: accentColor,
-                      size: 14, // Smaller
+                      size: 14,
                     ),
                   ),
                 ],
-                
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Show report creator info for emergency/nearby reports
+                      if ((isEmergencyReport || isNearbyReport) && reportUserName.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: accentColor.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  reportUserName[0].toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: accentColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                '$reportUserNameさんの報告',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if ((isEmergencyReport || isNearbyReport) && distance != null) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.blue.shade200, width: 0.5),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.location_on, size: 10, color: Colors.blue.shade700),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${distance.toStringAsFixed(1)}km',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+
+                      // Show report title for emergency/nearby reports
+                      if ((isEmergencyReport || isNearbyReport) && reportTitle.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            if (severity.isNotEmpty) ...[
+                              Icon(
+                                getSeverityIcon(severity),
+                                size: 12,
+                                color: getSeverityColor(severity),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: getSeverityColor(severity).withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  severity,
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                    color: getSeverityColor(severity),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Expanded(
+                              child: _buildHighlightedText(
+                                reportTitle,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: accentColor,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                      ],
+
+                      // Show report details (now checking both fields)
+                      if ((isEmergencyReport || isNearbyReport) && reportDetails.isNotEmpty) ...[
+                        _buildHighlightedText(
+                          reportDetails,
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 2),
+                      ],
+
+                      if ((isEmergencyReport || isNearbyReport) && latitude != null && longitude != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.my_location, size: 10, color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                '送信者位置: ${latitude.toStringAsFixed(4)}°, ${longitude.toStringAsFixed(4)}°',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey.shade600,
+                                  fontFamily: 'monospace',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Show notification title (admin notification or default title)
                       Row(
                         children: [
                           Expanded(
                             child: _buildHighlightedText(
                               title,
                               style: TextStyle(
-                                fontSize: 12, // Smaller
+                                fontSize: (isEmergencyReport || isNearbyReport) && reportTitle.isNotEmpty ? 10 : 12,
                                 fontWeight: read ? FontWeight.w500 : FontWeight.w600,
-                                color: Colors.grey.shade900,
+                                color: (isEmergencyReport || isNearbyReport) && reportTitle.isNotEmpty
+                                    ? Colors.grey.shade600
+                                    : Colors.grey.shade900,
                               ),
                             ),
                           ),
@@ -948,25 +1380,29 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                           ),
                         ],
                       ),
-                      if (body.isNotEmpty) ...[
+
+                      // Show body if it's not a report notification or if report details are empty
+                      if (body.isNotEmpty &&
+                          ((!isEmergencyReport && !isNearbyReport) || reportDetails.isEmpty)) ...[
                         const SizedBox(height: 2),
                         _buildHighlightedText(
                           body,
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600), // Smaller
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                           maxLines: 2,
                         ),
                       ],
+
                       if (timestamp != null) ...[
                         const SizedBox(height: 3),
                         Text(
                           _formatTimestamp(timestamp),
-                          style: TextStyle(fontSize: 9, color: Colors.grey.shade500), // Smaller
+                          style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
                         ),
                       ],
                     ],
                   ),
                 ),
-                
+
                 if (!_isSelectionMode)
                   _buildCompactMenu(docId, pinned, favorite, read),
               ],
@@ -1071,83 +1507,254 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     }
   }
 
-  void _showImageInfoDialog(BuildContext context, String imageUrl, String type) {
+  void _showImageInfoDialog(
+    BuildContext context, 
+    String imageUrl, 
+    Map<String, dynamic> data,
+  ) {
+    final title = data['title'] ?? '画像通知';
+    final body = data['body'] ?? '';
+    final timestamp = data['receivedAt'] as Timestamp?;
+    final type = data['type'] ?? 'media';
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.image, color: Colors.blue.shade700),
-            const SizedBox(width: 8),
-            const Text('画像通知'),
-          ],
-        ),
-        content: SingleChildScrollView(
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Try to show the image
+              // ========== Header ==========
               Container(
-                constraints: const BoxConstraints(maxHeight: 200),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 150,
-                        color: Colors.grey.shade100,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.broken_image, color: Colors.grey.shade400, size: 48),
-                            const SizedBox(height: 8),
-                            Text(
-                              'CORSエラー',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text(
-                '画像URL:',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade700,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 4),
-              SelectableText(
-                imageUrl,
-                style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.orange.shade200),
+                  color: Colors.blue.shade50,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.orange.shade700, size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'ブラウザのCORSポリシーにより、外部画像は直接表示できない場合があります。',
-                        style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      child: Icon(Icons.image, color: Colors.blue.shade700, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                          if (timestamp != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              DateFormat('yyyy/MM/dd HH:mm').format(timestamp.toDate()),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue.shade700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ========== Content ==========
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ✅ Image Display
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            maxHeight: 400,
+                            minHeight: 200,
+                          ),
+                          child: Image.network(
+                            imageUrl,
+                            fit: BoxFit.contain,
+                            width: double.infinity,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                height: 200,
+                                color: Colors.grey.shade100,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                height: 200,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.broken_image,
+                                      color: Colors.grey.shade400,
+                                      size: 64,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      '画像を読み込めませんでした',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+
+                      // ✅ Content/Body Text
+                      if (body.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Divider(),
+                        const SizedBox(height: 12),
+                        Text(
+                          '内容:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          body,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+
+                      // ✅ Image URL (expandable)
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 12),
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: Text(
+                          '画像URL',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        children: [
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: SelectableText(
+                              imageUrl,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue.shade700,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // ✅ CORS Warning (WEB ONLY!)
+                      if (kIsWeb) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.orange.shade700,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'ブラウザのCORSポリシーにより、外部画像は直接表示できない場合があります。',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+              // ========== Footer ==========
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('閉じる'),
                     ),
                   ],
                 ),
@@ -1155,22 +1762,16 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('閉じる'),
-          ),
-        ],
       ),
     );
   }
 
   //検索ハイライト付きテキスト
   Widget _buildHighlightedText(
-    String text, {
-    TextStyle? style,
-    int? maxLines,
-  }) {
+      String text, {
+        TextStyle? style,
+        int? maxLines,
+      }) {
     if (_searchQuery.isEmpty) {
       return Text(
         text,
@@ -1183,7 +1784,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     final spans = <TextSpan>[];
     final lowerText = text.toLowerCase();
     final lowerQuery = _searchQuery.toLowerCase();
-    
+
     int start = 0;
     int index = lowerText.indexOf(lowerQuery);
 
@@ -1191,7 +1792,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       if (index > start) {
         spans.add(TextSpan(text: text.substring(start, index), style: style));
       }
-      
+
       spans.add(TextSpan(
         text: text.substring(index, index + lowerQuery.length),
         style: style?.copyWith(
@@ -1199,7 +1800,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           fontWeight: FontWeight.bold,
         ),
       ));
-      
+
       start = index + lowerQuery.length;
       index = lowerText.indexOf(lowerQuery, start);
     }
@@ -1219,7 +1820,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   List<Widget> _buildNormalActions(String userId) {
     return [
       IconButton(
-        icon: const Icon(Icons.search, size: 20), 
+        icon: const Icon(Icons.search, size: 20),
         onPressed: () {
           setState(() => _isSearching = true);
         },
@@ -1231,12 +1832,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         tooltip: '選択',
       ),
       IconButton(
-        icon: const Icon(Icons.done_all, size: 20), 
+        icon: const Icon(Icons.done_all, size: 20),
         onPressed: () => _showMarkAllReadDialog(context, userId),
         tooltip: 'すべて既読',
       ),
       PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert, size: 20), 
+        icon: const Icon(Icons.more_vert, size: 20),
         onSelected: (value) {
           switch (value) {
             case 'clear_all':
@@ -1306,7 +1907,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
             );
             return;
           }
-          
+
           switch (value) {
             case 'delete':
               _deleteSelected(context);
@@ -1495,10 +2096,10 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
 
   // 通知詳細ダイアログ
   void _showFullNotificationDialog(
-    BuildContext context,
-    String docId,
-    Map<String, dynamic> data,
-  ) {
+      BuildContext context,
+      String docId,
+      Map<String, dynamic> data,
+      ) {
     if (!_isSelectionMode) {
       if (data['read'] != true) {
         _markAsRead(docId);
@@ -1586,38 +2187,124 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                       const SizedBox(height: 16),
                     ],
                     if (imageUrl.isNotEmpty) ...[
-                      const SizedBox(height: 8),
                       GestureDetector(
-                        onTap: () => _showImageInfoDialog(context, imageUrl, type),
+                        onTap: () => _showImageInfoDialog(context, imageUrl, data),
                         child: Container(
-                          height: 60,
                           width: 60,
+                          height: 60,
+                          margin: const EdgeInsets.only(right: 12),
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _getMediaIcon(type),
-                                color: Colors.grey.shade600,
-                                size: 24,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '画像',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey.shade600,
+                            ],
+                          ),
+                          child: Stack(
+                            children: [
+                              // Image
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    border: Border.all(
+                                      color: Colors.grey.shade200,
+                                      width: 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    width: 60,
+                                    height: 60,
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Container(
+                                        color: Colors.grey.shade50,
+                                        child: Center(
+                                          child: SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              value: loadingProgress.expectedTotalBytes != null
+                                                  ? loadingProgress.cumulativeBytesLoaded /
+                                                      loadingProgress.expectedTotalBytes!
+                                                  : null,
+                                              strokeWidth: 2.5,
+                                              color: Colors.blue.shade400,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: Colors.grey.shade50,
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.broken_image_outlined,
+                                              color: Colors.grey.shade400,
+                                              size: 24,
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '画像',
+                                              style: TextStyle(
+                                                fontSize: 8,
+                                                color: Colors.grey.shade500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                              
+                              // Badge overlay
+                              Positioned(
+                                bottom: 4,
+                                right: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(
+                                        Icons.image,
+                                        size: 8,
+                                        color: Colors.white,
+                                      ),
+                                      SizedBox(width: 2),
+                                      Text(
+                                        '画像',
+                                        style: TextStyle(
+                                          fontSize: 7,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ],
+                    ]
                   ],
                 ),
               ),
@@ -1647,7 +2334,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       } else {
         _selectedNotifications.add(docId);
       }
-      
+
       if (_selectedNotifications.isEmpty) {
         _isSelectionMode = false;
       }
@@ -1676,7 +2363,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     try {
       // Simulate loading delay for better UX
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       setState(() {
         _currentPage++; // Increment page
         _isLoadingMore = false;
@@ -1710,9 +2397,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         'pinned': !currentPinned,
         'pinnedAt': !currentPinned ? FieldValue.serverTimestamp() : null,
       });
-      
+
       // await _refreshNotifications();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1733,10 +2420,10 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         'favorite': !currentFavorite,
         'favoritedAt': !currentFavorite ? FieldValue.serverTimestamp() : null,
       });
-      
+
       // Refresh notifications to show changes immediately
       // await _refreshNotifications();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1839,7 +2526,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ $count件の通知を削除しました'),
+              content: Text('$count件の通知を削除しました'),
               backgroundColor: Colors.green,
             ),
           );
@@ -2145,98 +2832,99 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     }
   }
 
-    Future<void> _markAllAsRead(String userId) async {
-      try {
-        final batch = _firestore.batch();
-        
-        // Get all unread notifications for this user
-        final snapshot = await _firestore
-            .collection('notifications')
-            .where('userId', isEqualTo: userId)
-            .where('read', isEqualTo: false)
-            .get();
-  
-        for (var doc in snapshot.docs) {
-          batch.update(doc.reference, {'read': true});
-        }
-        
-        await batch.commit();
-        // await _refreshNotifications();
-      } catch (e) {
-        print('❌ Error marking all as read: $e');
+  Future<void> _markAllAsRead(String userId) async {
+    try {
+      final batch = _firestore.batch();
+
+      // Get all unread notifications for this user
+      final snapshot = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .where('read', isEqualTo: false)
+          .get();
+
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'read': true});
       }
-    }
-  
-    Future<void> _clearAllNotifications(String userId) async {
-      try {
-        final batch = _firestore.batch();
-        
-        final snapshot = await _firestore
-            .collection('notifications')
-            .where('userId', isEqualTo: userId)
-            .get();
-  
-        for (var doc in snapshot.docs) {
-          batch.delete(doc.reference);
-        }
-        
-        await batch.commit();
-      } catch (e) {
-        print('❌ Error clearing all notifications: $e');
-      }
-    }
-  
-    Future<void> _unpinAll(String userId) async {
-      try {
-        final batch = _firestore.batch();
-        
-        final snapshot = await _firestore
-            .collection('notifications')
-            .where('userId', isEqualTo: userId)
-            .where('pinned', isEqualTo: true)
-            .get();
-  
-        for (var doc in snapshot.docs) {
-          batch.update(doc.reference, {'pinned': false, 'pinnedAt': null});
-        }
-        
-        await batch.commit();
-        // await _refreshNotifications();
-      } catch (e) {
-        print('❌ Error unpinning all: $e');
-      }
-    }
-  
-    Future<void> _unfavoriteAll(String userId) async {
-      try {
-        final batch = _firestore.batch();
-        
-        final snapshot = await _firestore
-            .collection('notifications')
-            .where('userId', isEqualTo: userId)
-            .where('favorite', isEqualTo: true)
-            .get();
-  
-        for (var doc in snapshot.docs) {
-          batch.update(doc.reference, {'favorite': false, 'favoritedAt': null});
-        }
-        
-        await batch.commit();
-        // await _refreshNotifications();
-      } catch (e) {
-        print('❌ Error unfavoriting all: $e');
-      }
+
+      await batch.commit();
+      // await _refreshNotifications();
+    } catch (e) {
+      print('❌ Error marking all as read: $e');
     }
   }
-  
-  class NotificationGroup {
-    final String dateKey;
-    final DateTime date;
-    final List<DocumentSnapshot> notifications;
-  
-    NotificationGroup({
-      required this.dateKey,
-      required this.date,
-      required this.notifications,
-    });
+
+  Future<void> _clearAllNotifications(String userId) async {
+    try {
+      final batch = _firestore.batch();
+
+      final snapshot = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+    } catch (e) {
+      print('❌ Error clearing all notifications: $e');
+    }
   }
+
+  Future<void> _unpinAll(String userId) async {
+    try {
+      final batch = _firestore.batch();
+
+      final snapshot = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .where('pinned', isEqualTo: true)
+          .get();
+
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'pinned': false, 'pinnedAt': null});
+      }
+
+      await batch.commit();
+      // await _refreshNotifications();
+    } catch (e) {
+      print('❌ Error unpinning all: $e');
+    }
+  }
+
+  Future<void> _unfavoriteAll(String userId) async {
+    try {
+      final batch = _firestore.batch();
+
+      final snapshot = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .where('favorite', isEqualTo: true)
+          .get();
+
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'favorite': false, 'favoritedAt': null});
+      }
+
+      await batch.commit();
+      // await _refreshNotifications();
+    } catch (e) {
+      print('❌ Error unfavoriting all: $e');
+    }
+  }
+}
+
+class NotificationGroup {
+  final String dateKey;
+  final DateTime date;
+  final List<DocumentSnapshot> notifications;
+
+  NotificationGroup({
+    required this.dateKey,
+    required this.date,
+    required this.notifications,
+  });
+}
+
